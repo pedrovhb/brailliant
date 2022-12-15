@@ -4,6 +4,7 @@ import pytest
 
 from brailliant import sparkline, sparkbars, coords_to_braille
 from brailliant.canvas import Canvas
+from brailliant.sparkline import get_sparkbar
 
 
 def test_coords_to_braille():
@@ -84,18 +85,25 @@ def test_sparklines():
     )
 
 
-def test_sparkbars():
-
-    assert sparkbars(1, min_width=10) == "⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
-    assert sparkbars(min_width=10) == "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
-    assert sparkbars(1, 4, 5, min_width=10) == "⡶⠶⠂⠀⠀⠀⠀⠀⠀⠀"  # todo fix normalization
+def test_sparkbars_non_normalized():
+    assert get_sparkbar((1,), min_width=10, normalized=False) == "⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
+    assert get_sparkbar((), min_width=10, normalized=False) == "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
+    assert get_sparkbar((1, 4, 5), min_width=10, normalized=False) == "⡶⠶⠂⠀⠀⠀⠀⠀⠀⠀"
+    assert get_sparkbar((3, 4, 1), normalized=False) == "⣦⡤"
+    assert get_sparkbar((342, 37, 745), max_width=20, normalized=False) == "⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣖⣒"
     with pytest.raises(ValueError):
-        sparkbars(1, 4, 5, 2, 4)
-    # Test width=None
-    assert sparkbars(3, 4, 1) == "⣦⡤"
+        get_sparkbar((1, 4, 5, 2, 4), normalized=False)
 
-    assert sparkbars(342, 496, 745, max_width=20) == "⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⠶⠶⠶⠶⠶⠒⠒⠒⠒⠒⠒⠒⠒"
-    y = sparkbars(342, 496, 745)
+
+def test_sparkbars_normalized():
+    assert get_sparkbar((1,), min_width=10, normalized=True) == "⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀"
+    assert get_sparkbar((), min_width=10, normalized=True) == "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
+    assert get_sparkbar((1, 4, 5), min_width=10, normalized=True) == "⣶⣶⡶⠶⠶⠶⠶⠶⠶⠶"
+    assert get_sparkbar((3, 4, 1), normalized=True) == "⣦⡤"
+    assert get_sparkbar((342, 37, 745), max_width=20, normalized=True) == "⣶⣖⣒⣒⣒⣒⣒⣒⣒⣒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒"
+    with pytest.raises(ValueError):
+        get_sparkbar((1, 4, 5, 2, 4), normalized=True)
+
 
 
 def test_canvas():
