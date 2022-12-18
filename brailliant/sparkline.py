@@ -341,18 +341,13 @@ def get_sparkbar_normalized(
     if min_val < 0:
         data = tuple(value - min_val for value in data)
         min_val = 0
-
     val_range = max_val - min_val or 1
-    val_range_ch = math.ceil(val_range)
-
-    num_chars = width
-
-    val_scale = 2 * num_chars / val_range
+    val_scale = 2 * width / val_range
     char_normalized_data = tuple(val * val_scale for val in data)
+
     return get_sparkbar(
         char_normalized_data,
-        min_width=num_chars,
-        max_width=num_chars,
+        width=width,
         normalized=False
         )
 

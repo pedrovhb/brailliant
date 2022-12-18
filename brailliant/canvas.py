@@ -10,9 +10,7 @@ from typing import Literal, Callable, Final, Iterable
 from brailliant import coords_braille_mapping, BRAILLE_RANGE_START
 
 
-def _draw_line(
-    start: tuple[int, int], end: tuple[int, int]
-) -> Iterable[tuple[int, int]]:
+def _draw_line(start: tuple[int, int], end: tuple[int, int]) -> Iterable[tuple[int, int]]:
     """Yields all points between the start and end coordinates using the Bresenham line algo."""
     x0, y0 = start
     x1, y1 = end
@@ -26,6 +24,14 @@ def _draw_line(
         if slope_error_new >= 0:
             y = y + 1
             slope_error_new = slope_error_new - 2 * (x1 - x0)
+
+
+def _draw_polygon(vertices: list[tuple[int, int]]) -> Iterable[tuple[int, int]]:
+    """Yields all points on the perimeter of a polygon with the given vertices."""
+    for i in range(len(vertices)):
+        start = vertices[i]
+        end = vertices[(i + 1) % len(vertices)]
+        yield from _draw_line(start, end)
 
 
 def _draw_arc(
@@ -55,18 +61,25 @@ def _draw_arc(
 
 
 def _draw_rectangle(
-    start: tuple[int, int],
-    end: tuple[int, int],
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
 ) -> Iterable[tuple[int, int]]:
     """Yields all points between the start and end coordinates of a rectangle."""
-    x0, y0 = start
-    x1, y1 = end
     yield from itertools.chain(
         ((x, y0) for x in range(x0, x1)),
         ((x, y1) for x in range(x0, x1)),
         ((x0, y) for y in range(y0, y1)),
         ((x1, y) for y in range(y0, y1)),
     )
+
+
+def _draw_triangle(vertices: list[tuple[int, int]]) -> Iterable[tuple[int, int]]:
+    """Yields all points on the perimeter of a triangle with the given vertices."""
+    yield from _draw_line(vertices[0], vertices[1])
+    yield from _draw_line(vertices[1], vertices[2])
+    yield from _draw_line(vertices[2], vertices[0])
 
 
 class Canvas:
@@ -117,9 +130,7 @@ class Canvas:
 
     def fill(self, mode: Literal["add", "clear"] = "add") -> Canvas:
         """Fills the entire canvas with the given mode."""
-        self._canvas = (
-            (1 << self.width_chars * self.height_chars * 8) - 1 if mode == "add" else 0
-        )
+        self._canvas = (1 << self.width_chars * self.height_chars * 8) - 1 if mode == "add" else 0
         return self
 
     clear_all = partialmethod(fill, mode="clear")
@@ -233,16 +244,23 @@ class Canvas:
 
     def draw_rectangle(
         self,
-        start: tuple[int, int],
-        end: tuple[int, int],
+        x0: int,
+        y0: int,
+        x1: int,
+        y1: int,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
         """Draws a rectangle from start to end."""
-        return self.with_changes(_draw_rectangle(start, end), mode)
+        return self.with_changes(_draw_rectangle(x0, y0, x1, y1), mode)
 
-    def apply_other(
-        self, other: "Canvas", operation: Callable[[int, int], int]
+    def draw_polygon(self,
+                     coords: Iterable[tuple[int, int]],
+        mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
+        """Draws a polygon from the given coordinates."""
+        return self.with_changes(_draw_polygon(coords), mode)
+
+    def apply_other(self, other: "Canvas", operation: Callable[[int, int], int]) -> Canvas:
         """Apply a binary operation to the (integer value of) this canvas and another canvas, and
         return a new canvas with the result.
         """
