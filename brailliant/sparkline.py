@@ -255,12 +255,22 @@ class Sparkbar:
 
 def get_sparkbar(
     data: Iterable[float],
-    min_width: int | None = None,
-    max_width: int | None = None,
-    max_data_value: float | None = None,
+    width: int=40,
     min_data_value: float | None = None,
-) -> str:
+    max_data_value: float | None = None,
+    normalized: bool = True
+    ) -> str:
+
     data = tuple(data)
+    if not data:
+        return "⠀" * width
+
+    if len(data) > 4:
+        raise ValueError("Sparkbar can only have up to 4 bars.")
+
+    if normalized:
+        return get_sparkbar_normalized(data, width, max_data_value, min_data_value)
+
     min_val = min(data)
     max_val = max(data)
     if min_data_value is not None:
@@ -274,32 +284,30 @@ def get_sparkbar(
     # now at the start of the line; if the miniumum value is positive, do
     # nothing, to keep the start of the line as 0).
     min_val = min_val if min_val < 0 else 0
-    val_range = max_val - min_val
-    num_chars = math.ceil(val_range / 2)
+    num_chars = width
 
     chars = [BRAILLE_RANGE_START] * num_chars
     for i in range(num_chars):
         # Visiting i'th character -> i*2 and i*2+1 dots
         for j, value in enumerate(data):
-            if value - min_val >= i * 2:
+            if value - min_val > i * 2:
                 chars[i] |= coords_braille_mapping[0, j]
-            if value - min_val >= i * 2 + 1:
+            if value - min_val > i * 2 + 1:
                 chars[i] |= coords_braille_mapping[1, j]
     s = "".join(chr(c) for c in chars)
-    if min_width is not None and len(s) < min_width:
-        s = s.ljust(min_width, "⠀")
-    if max_width is not None and len(s) > max_width:
-        s = s[-max_width:]
+    if len(s) < width:
+        s = s.ljust(width, "⠀")
+    if len(s) > width:
+        s = s[-width:]
     return s
 
 
 def get_sparkbar_normalized(
     data: Iterable[float],
-    min_width: int = 0,
-    max_width: int | None = None,
-    max_data_value: float | None = None,
+    width: int=40,
     min_data_value: float | None = None,
-) -> str:
+    max_data_value: float | None = None
+    ) -> str:
     """Return a normalized sparkbar.
 
     If max_width is specified and its value is exceeded by the values, values will be normalized
@@ -334,17 +342,27 @@ def get_sparkbar_normalized(
         data = tuple(value - min_val for value in data)
         min_val = 0
 
-    val_range = max_val - min_val
+    val_range = max_val - min_val or 1
     val_range_ch = math.ceil(val_range)
 
-    num_chars = val_range_ch if max_width is None else min(max_width, val_range_ch)
-    if num_chars < min_width:
-        num_chars = min_width
+    num_chars = width
 
     val_scale = 2 * num_chars / val_range
     char_normalized_data = tuple(val * val_scale for val in data)
-    return get_sparkbar(char_normalized_data, min_width=num_chars, max_width=num_chars)
+    return get_sparkbar(
+        char_normalized_data,
+        min_width=num_chars,
+        max_width=num_chars,
+        normalized=False
+        )
 
+if __name__ == "brailliant.sparkline":
+    import time
+    import random
+
+    s = get_sparkbar((1, 4, 6, 3), width=5)
+    # sparkbar.update([random.random() for _ in range(10)])
+    # print(sparkbar)
 
 if __name__ == "__main__":
 
