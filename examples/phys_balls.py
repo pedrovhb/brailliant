@@ -323,8 +323,6 @@ async def show_balls() -> None:
             elif ch == b"\x1b[B":  # Down arrow
                 space.gravity *= 0.98
 
-    asyncio.create_task(process_inputs())
-
     loop = asyncio.get_event_loop()
     t = loop.time()
     time_step = 0.01
@@ -377,10 +375,14 @@ async def show_balls() -> None:
     async def gravity_from_sensors() -> None:
         while True:
             async for x, y, z in get_sensor_output():
-                space.gravity = Vec2d(x, y) * 100
+                space.gravity = Vec2d(x, y) * -20
+                if space.gravity.length > MAX_G:
+                    space.gravity = space.gravity.normalized() * MAX_G
 
     if mode == "android":
         asyncio.create_task(gravity_from_sensors())
+    else:
+        asyncio.create_task(process_inputs())
 
     physics_updater = OnTime(1 / RATE)
     physics_updater.run_periodically(update_state)
