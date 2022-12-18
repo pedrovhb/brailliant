@@ -381,8 +381,7 @@ async def show_balls() -> None:
 
     if mode == "android":
         asyncio.create_task(gravity_from_sensors())
-    else:
-        asyncio.create_task(process_inputs())
+    asyncio.create_task(process_inputs())
 
     physics_updater = OnTime(1 / RATE)
     physics_updater.run_periodically(update_state)
@@ -395,7 +394,7 @@ async def show_balls() -> None:
 
 
 if __name__ == "__main__":
-    mode = "android" if sys.argv[1:] == ["--android"] else "pc"
-    RATE = int(sys.argv[2]) if len(sys.argv) > 2 else 120  # 120 Hz on my monitor :)
+    mode = "android" if len(sys.argv) > 1 and sys.argv[1] == ["--android"] else "pc"
+    RATE = int(sys.argv[2]) if len(sys.argv) > 2 else 60  # 120 Hz looks great on my monitor :)
 
     asyncio.run(show_balls())
