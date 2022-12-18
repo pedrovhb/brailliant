@@ -22,6 +22,10 @@ ptpython = "^3.0.22"
 ipython = "^8.7.0"
 rich = "^12.6.0"
 
+
+[tool.poetry.group.examples.dependencies]
+pymunk = "^6.4.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

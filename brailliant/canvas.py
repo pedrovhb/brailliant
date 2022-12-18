@@ -10,7 +10,9 @@ from typing import Literal, Callable, Final, Iterable
 from brailliant import coords_braille_mapping, BRAILLE_RANGE_START
 
 
-def _draw_line(start: tuple[int, int], end: tuple[int, int]) -> Iterable[tuple[int, int]]:
+def _draw_line(
+    start: tuple[int, int], end: tuple[int, int]
+) -> Iterable[tuple[int, int]]:
     """Yields all points between the start and end coordinates using the Bresenham line algo."""
     x0, y0 = start
     x1, y1 = end
@@ -67,13 +69,6 @@ def _draw_rectangle(
     )
 
 
-t = tuple(chr(BRAILLE_RANGE_START | i) for i in range(256))
-et = tuple(chr(BRAILLE_RANGE_START | i).encode() for i in range(256))
-tb = tuple(BRAILLE_RANGE_START | i for i in range(256))
-print("t", t)
-print("tb", tb)
-
-
 class Canvas:
 
     __slots__ = ("width_chars", "height_chars", "_canvas", "width", "height")
@@ -122,13 +117,16 @@ class Canvas:
 
     def fill(self, mode: Literal["add", "clear"] = "add") -> Canvas:
         """Fills the entire canvas with the given mode."""
-        self._canvas = (1 << self.width_chars * self.height_chars * 8) - 1 if mode == "add" else 0
+        self._canvas = (
+            (1 << self.width_chars * self.height_chars * 8) - 1 if mode == "add" else 0
+        )
         return self
 
     clear_all = partialmethod(fill, mode="clear")
     set_all = partialmethod(fill, mode="add")
 
     def get_str(self) -> str:
+        t = tuple(chr(BRAILLE_RANGE_START | i) for i in range(256))
         lines = (
             "".join(
                 t[self._canvas >> i * 8 & 0xFF]
@@ -242,7 +240,9 @@ class Canvas:
         """Draws a rectangle from start to end."""
         return self.with_changes(_draw_rectangle(start, end), mode)
 
-    def apply_other(self, other: "Canvas", operation: Callable[[int, int], int]) -> Canvas:
+    def apply_other(
+        self, other: "Canvas", operation: Callable[[int, int], int]
+    ) -> Canvas:
         """Apply a binary operation to the (integer value of) this canvas and another canvas, and
         return a new canvas with the result.
         """
@@ -273,6 +273,12 @@ if __name__ == "__live_coding__":
     pass
 
 elif __name__ == "__main__":
+
+    t = tuple(chr(BRAILLE_RANGE_START | i) for i in range(256))
+    et = tuple(chr(BRAILLE_RANGE_START | i).encode() for i in range(256))
+    tb = tuple(BRAILLE_RANGE_START | i for i in range(256))
+    print("t", t)
+    print("tb", tb)
 
     c = Canvas(40, 40)
     c.draw_circle((14, 4), 2, angle_step=1)
