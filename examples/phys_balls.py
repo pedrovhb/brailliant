@@ -394,7 +394,7 @@ async def show_balls() -> None:
 
 
 if __name__ == "__main__":
-    mode = "android" if len(sys.argv) > 1 and sys.argv[1] == ["--android"] else "pc"
+    mode = "android" if len(sys.argv) > 1 and sys.argv[1] == "--android" else "pc"
     RATE = int(sys.argv[2]) if len(sys.argv) > 2 else 60  # 120 Hz looks great on my monitor :)
 
     asyncio.run(show_balls())
