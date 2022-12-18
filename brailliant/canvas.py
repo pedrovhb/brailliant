@@ -5,29 +5,42 @@ import math
 import operator
 import timeit
 from functools import partialmethod
-from typing import Literal, Callable, Final, Iterable
+from typing import Literal, Callable, Final, Iterable, Tuple
 
 from brailliant import coords_braille_mapping, BRAILLE_RANGE_START
 
 
-def _draw_line(start: tuple[int, int], end: tuple[int, int]) -> Iterable[tuple[int, int]]:
-    """Yields all points between the start and end coordinates using the Bresenham line algo."""
+def _draw_line(start: Tuple[int, int], end: Tuple[int, int]) -> Iterable[Tuple[int, int]]:
     x0, y0 = start
     x1, y1 = end
-    m_new = 2 * (y1 - y0)
-    slope_error_new = m_new - (x1 - x0)
 
+    # Calculate the change in x and y
+    dx = x1 - x0
+    dy = y1 - y0
+
+    # Calculate the number of steps to take
+    steps = abs(dx) if abs(dx) > abs(dy) else abs(dy)
+
+    # Calculate the change in x and y for each step
+    x_increment = dx / steps if steps else 0
+    y_increment = dy / steps if steps else 0
+
+    # Iterate over the number of steps and yield each point
+    x = x0
     y = y0
-    for x in range(x0, x1 + 1):
-        yield x, y
-        slope_error_new = slope_error_new + m_new
-        if slope_error_new >= 0:
-            y = y + 1
-            slope_error_new = slope_error_new - 2 * (x1 - x0)
+    for _ in range(steps):
+        yield int(round(x)), int(round(y))
+        x += x_increment
+        y += y_increment
 
 
-def _draw_polygon(vertices: list[tuple[int, int]]) -> Iterable[tuple[int, int]]:
+def _draw_polygon(vertices: Iterable[tuple[int, int]]) -> Iterable[tuple[int, int]]:
     """Yields all points on the perimeter of a polygon with the given vertices."""
+    vertices = tuple(vertices)
+
+    with open("test.txt", "a") as f:
+        print(vertices, file=f)
+
     for i in range(len(vertices)):
         start = vertices[i]
         end = vertices[(i + 1) % len(vertices)]
@@ -75,11 +88,43 @@ def _draw_rectangle(
     )
 
 
-def _draw_triangle(vertices: list[tuple[int, int]]) -> Iterable[tuple[int, int]]:
+def _draw_triangle(vertices: Iterable[tuple[int, int]]) -> Iterable[tuple[int, int]]:
     """Yields all points on the perimeter of a triangle with the given vertices."""
+    vertices = tuple(vertices)
     yield from _draw_line(vertices[0], vertices[1])
     yield from _draw_line(vertices[1], vertices[2])
     yield from _draw_line(vertices[2], vertices[0])
+
+
+def _draw_arrow(
+    start: Tuple[int, int], end_or_angle: Tuple[int, int] | float, size: int
+) -> Iterable[Tuple[int, int]]:
+
+    if isinstance(end_or_angle, (float, int)):
+        end = (
+            start[0] + int(size * math.cos(math.radians(end_or_angle))),
+            start[1] + int(size * math.sin(math.radians(end_or_angle))),
+        )
+        angle = end_or_angle
+    else:
+        end = end_or_angle
+        angle = math.degrees(math.atan2(end[1] - start[1], end[0] - start[0]))
+
+    yield from _draw_line(start, end)
+    yield from _draw_line(
+        end,
+        (
+            end[0] + int(size * 0.4 * math.cos(math.radians(angle + 140))),
+            end[1] + int(size * 0.4 * math.sin(math.radians(angle + 140))),
+        ),
+    )
+    yield from _draw_line(
+        end,
+        (
+            end[0] + int(size * 0.4 * math.cos(math.radians(angle - 140))),
+            end[1] + int(size * 0.4 * math.sin(math.radians(angle - 140))),
+        ),
+    )
 
 
 class Canvas:
@@ -253,12 +298,26 @@ class Canvas:
         """Draws a rectangle from start to end."""
         return self.with_changes(_draw_rectangle(x0, y0, x1, y1), mode)
 
-    def draw_polygon(self,
-                     coords: Iterable[tuple[int, int]],
+    def draw_polygon(
+        self,
+        coords: Iterable[tuple[int, int]],
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
         """Draws a polygon from the given coordinates."""
-        return self.with_changes(_draw_polygon(coords), mode)
+        pol = tuple(_draw_polygon(coords))
+        with open("pol.txt", "a") as f:
+            f.write(f"{pol}\r")
+        return self.with_changes(pol, mode)
+
+    def draw_arrow(
+        self,
+        start: tuple[int, int],
+        end_or_angle: tuple[int, int] | float,
+        size: int = 5,
+        mode: Literal["add", "clear"] = "add",
+    ) -> Canvas:
+        """Draws an arrow from start to end."""
+        return self.with_changes(_draw_arrow(start, end_or_angle, size), mode)
 
     def apply_other(self, other: "Canvas", operation: Callable[[int, int], int]) -> Canvas:
         """Apply a binary operation to the (integer value of) this canvas and another canvas, and

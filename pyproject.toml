@@ -25,6 +25,7 @@ python = "^3.10"
 
 [tool.poetry.group.examples.dependencies]
 pymunk = "^6.4.0"
+astream = "0.7.3"
 
 [build-system]
 requires = ["poetry-core"]
