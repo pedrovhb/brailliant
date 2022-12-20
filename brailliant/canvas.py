@@ -214,6 +214,75 @@ class Canvas:
         """Returns a string with control characters to draw the canvas."""
         return self.get_str().replace("\n", "\x1b[1B\r")
 
+    @classmethod
+    def from_image(
+        cls, raw_bytes: bytes, img_width, img_height: int, mode: Literal["add", "clear"] = "add"
+    ) -> Canvas:
+        """Sets the canvas to the given image, using raw_bytes as the image data.
+
+        The image data should be in the format of a 1-bit per pixel image, with the first byte being the top-left pixel, and the last byte being the bottom-right pixel. This is the format used by PIL.Image.tobytes(). Thus, to use this function from an image, you should use something like:
+
+        >>> from PIL import Image
+        >>> image = Image.open("image.png")
+        >>> image = image.convert("1")
+        >>> canvas = Canvas.from_image(image.tobytes(), image.width, image.height)
+
+        Args:
+            raw_bytes: The raw bytes of the image.
+            img_width: The width of the image.
+            img_height: The height of the image.
+            mode: The mode to use when drawing the image. If "add", the image will be drawn as normal. If "clear", the image will be drawn with inverted colors.
+        Returns:
+            A new canvas with the image drawn on it.
+        """
+
+        # Image is 16 px wide - 2 cols
+        # Image is 16 px tall - 4 rows
+        # Each cell is 2x4 px
+        # Each byte is 8 px
+        # Each row is 2 bytes
+        # Each cell is 4 bytes
+
+        row_start, row_end = 0, 2
+        # Generically:
+        row_start, row_end = 0, img_width // 8
+        col_start, col_end = 0, img_height // 4
+        print(f"row_start: {row_start}, row_end: {row_end}")
+        print(f"col_start: {col_start}, col_end: {col_end}")
+
+        for j in range(4):
+            for i in range(row_start, row_end, 2):
+                print(f"i: {i:02}\t{raw_bytes[i]:08b}", end="")
+                print()
+
+        for i, b in enumerate(raw_bytes):
+            row = i // img_width * 4
+            print(f"{b:08b}", end="" if i % 2 else "\n")
+
+        for i in raw_bytes[::img_width]:
+            print(i // 8)
+            print(format(i, "08"))
+        for i, b in enumerate(raw_bytes):
+            # row = img_height - i // (img_width // 8) - 1
+            # col = i % (img_height // 8)
+            col = i % (img_width // 8)
+            row = img_height - i // (img_width // 8) - 1
+            for j in range(8):
+                if b & (1 << j):
+                    x = 8 * col + j
+                    y = row
+                    if x < 0 or y < 0 or x >= img_width or y >= img_height:
+                        continue
+                    cell_x, char_x = divmod(x, 2)
+                    cell_y, char_y = divmod(y, 4)
+                    char = coords_braille_mapping[(char_x, char_y)]
+                    char_xy = cell_y * (img_width // 2) + cell_x
+                    delta |= char << char_xy * 8
+
+        if mode == "clear":
+            delta = ~delta
+        return Canvas(img_width, img_height, delta)
+
     def with_changes(
         self,
         coords: Iterable[tuple[int, int]],

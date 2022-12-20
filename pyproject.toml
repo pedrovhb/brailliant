@@ -27,6 +27,14 @@ python = "^3.10"
 pymunk = "^6.4.0"
 astream = "0.7.3"
 
+
+[tool.poetry.group.image.dependencies]
+pillow = "^9.3.0"
+
+
+[tool.poetry.group.dev.dependencies]
+scalene = "^1.5.16"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

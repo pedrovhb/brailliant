@@ -380,6 +380,7 @@ async def show_balls() -> None:
                     space.gravity = space.gravity.normalized() * MAX_G
 
     if mode == "android":
+        space.damping = 0.98
         asyncio.create_task(gravity_from_sensors())
     asyncio.create_task(process_inputs())
 
