@@ -32,7 +32,10 @@ async def async_getch() -> AsyncGenerator[bytes, None]:
     try:
         while True:
             await ev.wait()
-            char = sys.stdin.buffer.read()
+            try:
+                char = sys.stdin.buffer.read()
+            except BlockingIOError:
+                continue
             if not char:
                 ev.clear()
                 continue

@@ -21,7 +21,7 @@ from examples.async_chars import async_getch
 
 err = deque(maxlen=20)
 
-CANVAS_W, CANVAS_H = 150, 75
+CANVAS_W, CANVAS_H = 120, 85
 
 SIM_SCALE = 0.5
 SHAPE_ELASTICITY = 0.97
@@ -279,18 +279,23 @@ async def show_balls() -> None:
         (round(CANVAS_W / 2), 0),
         (round(CANVAS_W / 2), round(CANVAS_H / 4)),
     )
-
-    space = get_space()
-    objs = get_objs()
-    for obj in objs:
-        space.add(obj.body, obj.shape)
-
     gravy_on = True
     time_on = True
     MAX_G = 499
     gravy = Vec2d(0, -98.1)
-    space.gravity = gravy
 
+
+
+    space = get_space()
+    space.gravity = gravy
+    
+    async def gravity_from_sensors() -> None:
+        while True:
+            async for x, y, z in get_sensor_output():
+                space.gravity = Vec2d(x, y) * -20
+                if space.gravity.length > MAX_G:
+                    space.gravity = space.gravity.normalized() * MAX_G
+    
     async def process_inputs() -> None:
         nonlocal time_on, gravy_on, gravy
 
@@ -322,6 +327,20 @@ async def show_balls() -> None:
 
             elif ch == b"\x1b[B":  # Down arrow
                 space.gravity *= 0.98
+
+    if mode == "android":
+        space.damping = 0.9
+        global SHAPE_ELASTICITY
+        SHAPE_ELASTICITY = 0.85
+        asyncio.create_task(gravity_from_sensors())
+
+    asyncio.create_task(process_inputs())
+
+    objs = get_objs()
+    for obj in objs:
+        space.add(obj.body, obj.shape)
+
+
 
     loop = asyncio.get_event_loop()
     t = loop.time()
@@ -361,27 +380,21 @@ async def show_balls() -> None:
         s = copy.get_str_control_chars()
         all_errs = "\033[K\n".join(err)
         fps = 1 / dt
-        print(
-            s + f"\x1b[{math.ceil(CANVAS_H/4)+1};2H"
-            f"\n  g - toggle gravity\t\t\t\tt: toggle time\n"
-            f"  up/down arrows: change gravity\t\tleft/right arrows: rotate gravity\n\n"
-            f"  gravity: {space.gravity.x:.3f}, {space.gravity.y:.3f}\n"
-            f"  fps: {fps:05.1f} \n"
-            f"\n{all_errs}\x1b[0;0H",
-            end="",
-            flush=True,
-        )
+        try:
+            print(
+                s + f"\x1b[{math.ceil(CANVAS_H/4)+1};2H"
+                f"\n  g - toggle gravity\t\t\t\tt: toggle time\n"
+                f"  up/down arrows: change gravity\t\tleft/right arrows: rotate gravity\n\n"
+                f"  gravity: {space.gravity.x:.3f}, {space.gravity.y:.3f}\n"
+                f"  fps: {fps:05.1f} \n"
+                f"\n{all_errs}\x1b[0;0H",
+                end="",
+                flush=True,
+            )
+        except BlockingIOError:
+            pass
 
-    async def gravity_from_sensors() -> None:
-        while True:
-            async for x, y, z in get_sensor_output():
-                space.gravity = Vec2d(x, y) * -20
-                if space.gravity.length > MAX_G:
-                    space.gravity = space.gravity.normalized() * MAX_G
 
-    if mode == "android":
-        asyncio.create_task(gravity_from_sensors())
-    asyncio.create_task(process_inputs())
 
     physics_updater = OnTime(1 / RATE)
     physics_updater.run_periodically(update_state)
