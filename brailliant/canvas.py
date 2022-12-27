@@ -5,7 +5,7 @@ import math
 import operator
 import timeit
 from functools import partialmethod
-from typing import Literal, Callable, Final, Iterable, Tuple
+from typing import Literal, Callable, Final, Iterable, Tuple, overload
 
 from brailliant import coords_braille_mapping, BRAILLE_RANGE_START
 
@@ -316,14 +316,53 @@ class Canvas:
 
         return self
 
+    @overload
     def draw_line(
         self,
-        start: tuple[int, int],
-        end: tuple[int, int],
+        x0_or_start: tuple[int, int],
+        y0_or_end: tuple[int, int],
+        x1: None,
+        y1: None,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
-        """Draw a line from start to end."""
-        return self.with_changes(_draw_line(start, end), mode)
+        ...
+
+    @overload
+    def draw_line(
+        self,
+        x0_or_start: int,
+        y0_or_end: int,
+        x1: int,
+        y1: int,
+        mode: Literal["add", "clear"] = "add",
+    ) -> Canvas:
+        ...
+
+    def draw_line(
+        self,
+        x0_or_start: tuple[int, int] | int,
+        y0_or_end: tuple[int, int] | int,
+        x1: int | None = None,
+        y1: int | None = None,
+        mode: Literal["add", "clear"] = "add",
+    ) -> Canvas:
+
+        if x1 is None and y1 is None:
+            assert isinstance(x0_or_start, tuple)
+            assert isinstance(y0_or_end, tuple)
+            start_tup = x0_or_start
+            end_tup = y0_or_end
+        else:
+            assert isinstance(x0_or_start, int)
+            assert isinstance(y0_or_end, int)
+            assert isinstance(x1, int)
+            assert isinstance(y1, int)
+            start_tup = (x0_or_start, y0_or_end)
+            end_tup = (x1, y1)
+
+        x0, y0 = start_tup
+        x1, y1 = end_tup
+        return self.with_changes(_draw_line((x0, y0), (x1, y1)), mode)
 
     def draw_arc(
         self,
