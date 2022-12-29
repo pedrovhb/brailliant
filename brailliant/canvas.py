@@ -4,13 +4,37 @@ import itertools
 import math
 import operator
 import timeit
+from enum import Enum
 from functools import partialmethod
-from typing import Literal, Callable, Final, Iterable, Tuple, overload
+from pathlib import Path
+from typing import Literal, Callable, Final, Iterable, Tuple, overload, Iterator, TYPE_CHECKING
 
-from brailliant import coords_braille_mapping, BRAILLE_RANGE_START
+from PIL.Image import Dither
+
+from brailliant import BRAILLE_ROWS, BRAILLE_COLS, BRAILLE_RANGE_START, coords_braille_mapping
+
+if TYPE_CHECKING:
+    try:
+        from PIL.Image import Image
+    except ImportError:
+        Image = "Image"
 
 
-def _draw_line(start: Tuple[int, int], end: Tuple[int, int]) -> Iterable[Tuple[int, int]]:
+def _draw_line(
+    start: Tuple[int, int],
+    end: Tuple[int, int],
+    dotting: int = 1,
+) -> Iterable[Tuple[int, int]]:
+    """Yields all points on the line between the start and end coordinates.
+
+    Args:
+        start: The start coordinates of the line.
+        end: The end coordinates of the line.
+        dotting: The spacing between dots on the line.
+
+    Yields:
+        All points on the line between the start and end coordinates.
+    """
     x0, y0 = start
     x1, y1 = end
 
@@ -26,10 +50,11 @@ def _draw_line(start: Tuple[int, int], end: Tuple[int, int]) -> Iterable[Tuple[i
     y_increment = dy / steps if steps else 0
 
     # Iterate over the number of steps and yield each point
-    x = x0
-    y = y0
-    for _ in range(steps):
-        yield int(round(x)), int(round(y))
+    x = float(x0)
+    y = float(y0)
+    for i in range(steps):
+        if i % dotting == 0:
+            yield round(x), round(y)
         x += x_increment
         y += y_increment
 
@@ -127,43 +152,100 @@ def _draw_arrow(
     )
 
 
+def _draw_image(image: str | Path | "Image") -> Iterator[tuple[int, int]]:
+    try:
+        from PIL.Image import Image, Dither, open as open_image
+    except ImportError as e:
+        raise ImportError(
+            "ImportError while trying to import Pillow."
+            "\nImage loading requires the Pillow library to be installed:"
+            "\n    pip install Pillow"
+        ) from e
+
+    if isinstance(image, (str, Path)):
+        image = open_image(image)
+
+    image = image.convert("1", dither=Dither.FLOYDSTEINBERG)
+    im_height = image.height
+    im_width = image.width
+    for i, point in enumerate(image.getdata()):
+        y, x = divmod(i, im_width)
+        y = im_height - y
+        if point:
+            yield x, y
+
+
+class TextAlign(str, Enum):
+    LEFT = "left"
+    RIGHT = "right"
+    CENTER = "center"
+
+
+class CanvasText:
+    def __init__(
+        self,
+        x: int,
+        y: int,
+        text: str,
+        parent: Canvas,
+        alignment: TextAlign = TextAlign.LEFT,
+    ):
+        self.text = text
+        self.x = x
+        self.y = y
+        self.parent = parent
+        self.alignment = alignment
+
+    def in_split_lines(self) -> Iterable[CanvasText]:
+        """Yields a new CanvasText for each line of text."""
+        for i, line in enumerate(self.text.splitlines()):
+            yield CanvasText(
+                self.x,
+                self.y + (i * BRAILLE_ROWS - 1),
+                line,
+                self.parent,
+                self.alignment,
+            )
+
+    def __repr__(self) -> str:
+        return f"CanvasText({self.text!r}, {self.x}, {self.y})"
+
+
 class Canvas:
 
-    __slots__ = ("width_chars", "height_chars", "_canvas", "width", "height")
-
-    BRAILLE_COLS: Final[int] = 2
-    BRAILLE_ROWS: Final[int] = 4
+    __slots__ = ("width_chars", "height_chars", "_canvas", "width", "height", "_text")
 
     def __init__(self, width_dots: int, height_dots: int, contents: int = 0) -> None:
         self.width = width_dots
         self.height = height_dots
-        width_chars = math.ceil(width_dots / self.BRAILLE_COLS)
-        height_chars = math.ceil(height_dots / self.BRAILLE_ROWS)
+        width_chars = math.ceil(width_dots / BRAILLE_COLS)
+        height_chars = math.ceil(height_dots / BRAILLE_ROWS)
         self.width_chars = width_chars
         self.height_chars = height_chars
         self._canvas = contents
+        self._text: list[CanvasText] = []
 
-    def shifted(self, x: int, y: int) -> "Canvas":
-        """Returns a new canvas with the given coordinates added to all coordinates."""
-        canvas = self._canvas << (y * self.width_chars + x) * 8  # todo this is wrong
-        return Canvas(
-            self.width,
-            self.height,
-            canvas,
-        )
+    # def shifted(self, x: int, y: int) -> "Canvas":
+    #     """Returns a new canvas with the given coordinates added to all coordinates."""
+    #     canvas = self._canvas << (y * self.width_chars + x) * 8  # todo this is wrong
+    #     return Canvas(
+    #         self.width,
+    #         self.height,
+    #         canvas,
+    #     )
 
     @classmethod
     def with_cell_size(cls, width: int, height: int) -> Canvas:
-        return cls(width * cls.BRAILLE_COLS, height * cls.BRAILLE_ROWS)
+        return cls(width * BRAILLE_COLS, height * BRAILLE_ROWS)
 
     def to_char_xy(self, x: int, y: int) -> int:
         return y * self.width_chars + x
 
     def to_cell_xy(self, x: int, y: int) -> tuple[int, int]:
-        return x // self.BRAILLE_COLS, y // self.BRAILLE_ROWS
+        return x // BRAILLE_COLS, y // BRAILLE_ROWS
 
     def to_cell_offset(self, x: int, y: int) -> int:
-        return (y % self.BRAILLE_ROWS) * self.BRAILLE_COLS + (x % self.BRAILLE_COLS)
+        return (y % BRAILLE_ROWS) * BRAILLE_COLS + (x % BRAILLE_COLS)
 
     def set_cell(self, x: int, y: int) -> Canvas:
         self._canvas |= 1 << y * self.width_chars + x
@@ -182,106 +264,61 @@ class Canvas:
     set_all = partialmethod(fill, mode="add")
 
     def get_str(self) -> str:
-        t = tuple(chr(BRAILLE_RANGE_START | i) for i in range(256))
-        lines = (
+        braille_str = tuple(chr(BRAILLE_RANGE_START | i) for i in range(256))
+        lines = [
             "".join(
-                t[self._canvas >> i * 8 & 0xFF]
+                braille_str[self._canvas >> i * 8 & 0xFF]
                 for i in range(self.width_chars * y, self.width_chars * (y + 1))
             )
             for y in range(self.height_chars - 1, -1, -1)
-        )
+        ]
+
+        # Add text
+        text_lines = itertools.chain.from_iterable(txt.in_split_lines() for txt in self._text)
+        for text in text_lines:
+            char_length = len(text.text)
+            char_y = round(text.y / BRAILLE_ROWS)
+            txt = text.text
+
+            if char_y >= len(lines):
+                continue
+
+            if text.alignment == TextAlign.LEFT:
+                char_x = text.x // BRAILLE_COLS
+            elif text.alignment == TextAlign.CENTER:
+                char_x = (text.x - char_length * BRAILLE_COLS // 2) // BRAILLE_COLS
+            elif text.alignment == TextAlign.RIGHT:
+                char_x = (text.x - char_length * BRAILLE_COLS) // BRAILLE_COLS
+            else:
+                raise ValueError(f"Invalid text alignment {text.alignment!r}")
+
+            if char_x < 0:
+                txt = txt[-char_x:]
+                char_x = 0
+            if char_x + char_length > self.width_chars:
+                txt = txt[: self.width_chars - char_x]
+            char_length = len(txt)
+
+            txt_start = char_x
+            txt_end = char_x + char_length
+            lines[char_y] = "".join((lines[char_y][:txt_start], txt, lines[char_y][txt_end:]))
+
         return "\n".join(lines)
 
-    # t = tuple(chr(BRAILLE_RANGE_START | i) for i in range(256))
-    # return "\r\n".join(
-    #     "".join(
-    #         chr(BRAILLE_RANGE_START | self._canvas >> (j * self.width_chars + i) & 0xFF)
-    #         for i in range(self.width_chars)
-    #     )
-    #     for j in range(self.height_chars)
-    # )
-    # lines = [
-    #     "\r\033[1B".join(
-    #         t[self._canvas >> (i * self.width_chars + i) & 0xFF]
-    #         for i in range(self.width_chars)
-    #     )
-    #     for _ in range(self.height_chars)
-    # ]
-    # print(len(lines[0]))
-    # return "\n".join(lines)
+    def write_text(
+        self,
+        x: int,
+        y: int,
+        text: str,
+        alignment: TextAlign = TextAlign.LEFT,
+    ) -> Canvas:
+        ct = CanvasText(x=x, y=y, text=text, parent=self, alignment=alignment)
+        self._text.append(ct)
+        return self
 
     def get_str_control_chars(self) -> str:
         """Returns a string with control characters to draw the canvas."""
         return self.get_str().replace("\n", "\x1b[1B\r")
-
-    @classmethod
-    def from_image(
-        cls, raw_bytes: bytes, img_width, img_height: int, mode: Literal["add", "clear"] = "add"
-    ) -> Canvas:
-        """Sets the canvas to the given image, using raw_bytes as the image data.
-
-        The image data should be in the format of a 1-bit per pixel image, with the first byte being the top-left pixel, and the last byte being the bottom-right pixel. This is the format used by PIL.Image.tobytes(). Thus, to use this function from an image, you should use something like:
-
-        >>> from PIL import Image
-        >>> image = Image.open("image.png")
-        >>> image = image.convert("1")
-        >>> canvas = Canvas.from_image(image.tobytes(), image.width, image.height)
-
-        Args:
-            raw_bytes: The raw bytes of the image.
-            img_width: The width of the image.
-            img_height: The height of the image.
-            mode: The mode to use when drawing the image. If "add", the image will be drawn as normal. If "clear", the image will be drawn with inverted colors.
-        Returns:
-            A new canvas with the image drawn on it.
-        """
-
-        # Image is 16 px wide - 2 cols
-        # Image is 16 px tall - 4 rows
-        # Each cell is 2x4 px
-        # Each byte is 8 px
-        # Each row is 2 bytes
-        # Each cell is 4 bytes
-
-        row_start, row_end = 0, 2
-        # Generically:
-        row_start, row_end = 0, img_width // 8
-        col_start, col_end = 0, img_height // 4
-        print(f"row_start: {row_start}, row_end: {row_end}")
-        print(f"col_start: {col_start}, col_end: {col_end}")
-
-        for j in range(4):
-            for i in range(row_start, row_end, 2):
-                print(f"i: {i:02}\t{raw_bytes[i]:08b}", end="")
-                print()
-
-        for i, b in enumerate(raw_bytes):
-            row = i // img_width * 4
-            print(f"{b:08b}", end="" if i % 2 else "\n")
-
-        for i in raw_bytes[::img_width]:
-            print(i // 8)
-            print(format(i, "08"))
-        for i, b in enumerate(raw_bytes):
-            # row = img_height - i // (img_width // 8) - 1
-            # col = i % (img_height // 8)
-            col = i % (img_width // 8)
-            row = img_height - i // (img_width // 8) - 1
-            for j in range(8):
-                if b & (1 << j):
-                    x = 8 * col + j
-                    y = row
-                    if x < 0 or y < 0 or x >= img_width or y >= img_height:
-                        continue
-                    cell_x, char_x = divmod(x, 2)
-                    cell_y, char_y = divmod(y, 4)
-                    char = coords_braille_mapping[(char_x, char_y)]
-                    char_xy = cell_y * (img_width // 2) + cell_x
-                    delta |= char << char_xy * 8
-
-        if mode == "clear":
-            delta = ~delta
-        return Canvas(img_width, img_height, delta)
 
     def with_changes(
         self,
@@ -298,13 +335,13 @@ class Canvas:
             if (
                 x < 0
                 or y < 0
-                or x >= self.width_chars * self.BRAILLE_COLS
-                or y >= self.height_chars * self.BRAILLE_ROWS
+                or x >= self.width_chars * BRAILLE_COLS
+                or y >= self.height_chars * BRAILLE_ROWS
             ):
                 continue
 
-            cell_x, char_x = divmod(x, self.BRAILLE_COLS)
-            cell_y, char_y = divmod(y, self.BRAILLE_ROWS)
+            cell_x, char_x = divmod(x, BRAILLE_COLS)
+            cell_y, char_y = divmod(y, BRAILLE_ROWS)
             char = coords_braille_mapping[(char_x, char_y)]
             char_xy = cell_y * self.width_chars + cell_x
             delta |= char << char_xy * 8
@@ -323,7 +360,8 @@ class Canvas:
         y0_or_end: tuple[int, int],
         x1: None,
         y1: None,
-        mode: Literal["add", "clear"] = "add",
+        dotting: int = ...,
+        mode: Literal["add", "clear"] = ...,
     ) -> Canvas:
         ...
 
@@ -334,7 +372,8 @@ class Canvas:
         y0_or_end: int,
         x1: int,
         y1: int,
-        mode: Literal["add", "clear"] = "add",
+        dotting: int = ...,
+        mode: Literal["add", "clear"] = ...,
     ) -> Canvas:
         ...
 
@@ -344,6 +383,7 @@ class Canvas:
         y0_or_end: tuple[int, int] | int,
         x1: int | None = None,
         y1: int | None = None,
+        dotting: int = 1,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
 
@@ -362,7 +402,7 @@ class Canvas:
 
         x0, y0 = start_tup
         x1, y1 = end_tup
-        return self.with_changes(_draw_line((x0, y0), (x1, y1)), mode)
+        return self.with_changes(_draw_line((x0, y0), (x1, y1), dotting=dotting), mode)
 
     def draw_arc(
         self,
@@ -433,14 +473,24 @@ class Canvas:
         """
         return Canvas(self.width, self.height, operation(self._canvas, other._canvas))
 
+    # def draw_image(self):
+
+    def draw_image(
+        self,
+        image: str | Path | "Image",
+        mode: Literal["add", "clear"] = "add",
+    ) -> Canvas:
+        """Draws an image on the canvas."""
+        return self.with_changes(_draw_image(image), mode)
+
     __or__ = partialmethod(apply_other, operation=operator.or_)
     __and__ = partialmethod(apply_other, operation=operator.and_)
     __xor__ = partialmethod(apply_other, operation=operator.xor)
 
-    def __invert__(self) -> "Canvas":
+    def __invert__(self) -> Canvas:
         return Canvas(self.width, self.height, ~self._canvas)
 
-    def copy(self) -> "Canvas":
+    def copy(self) -> Canvas:
         return Canvas(self.width, self.height, self._canvas)
 
     def __str__(self) -> str:
@@ -480,10 +530,6 @@ elif __name__ == "__main__":
 
     canvas = Canvas(40, 40)
     canvas.draw_circle((15, 15), 10)
-
-    canvas_2 = Canvas(40, 40)
-    canvas_2.draw_circle((25, 25), 10)
-
     print("=====")
     print(canvas)
     """
@@ -499,6 +545,8 @@ elif __name__ == "__main__":
     ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     """
 
+    canvas_2 = Canvas(40, 40)
+    canvas_2.draw_circle((25, 25), 10)
     print("=====")
     print(canvas_2)
     """
@@ -514,8 +562,9 @@ elif __name__ == "__main__":
     ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     """
 
+    canvas_3 = canvas | canvas_2
     print("=====")
-    print(canvas | canvas_2)
+    print(canvas_3)
     """
     ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     ⠀⠀⠀⠀⠀⠀⠀⠀⢀⡤⠖⠋⠉⠉⠓⠦⣄⠀⠀⠀
@@ -528,4 +577,43 @@ elif __name__ == "__main__":
     ⠀⠀⠀⠀⠉⠓⠦⠤⠤⠖⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀
     ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     """
+
+    canvas_4 = Canvas(61, 91)
+    canvas_4.draw_line(0, 0, 0, 90)
+    canvas_4.draw_line(0, 90, 60, 90)
+    canvas_4.draw_line(60, 90, 60, 0)
+    canvas_4.draw_line(60, 0, 0, 0)
+    canvas_4.draw_line(30, 0, 30, 90, dotting=3)
+    canvas_4.write_text(30, 10, "Hello, world!")
+    canvas_4.write_text(30, 20, "Hello, world!", TextAlign.CENTER)
+    canvas_4.write_text(30, 30, "Hello, world!", TextAlign.RIGHT)
+    canvas_4.write_text(30, 40, "Hello, kind\nworld!", TextAlign.CENTER)
+    canvas_4.write_text(30, 60, "Hello,\nkind world!", TextAlign.RIGHT)
+    canvas_4.write_text(30, 80, "Hello,\nkind world!", TextAlign.LEFT)
     print("=====")
+    print(canvas_4)
+    """
+    ⡖⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⡆
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀Hello, world!⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀Hello, world!⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀Hello, world!⡁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀Hello, kind⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀world!⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀Hello,⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀kind world!⡁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀Hello,⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇
+    ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀kind world!⠀⠀⠀⠀⡇
+    ⣇⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣁⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡇
+    """

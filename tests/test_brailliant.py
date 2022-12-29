@@ -45,7 +45,7 @@ def test_coords_to_braille_exceptions():
 def test_sparklines():
 
     # Test sparklines
-    assert sparkline([1]) == "⢀"
+    assert sparkline([1]) == "£"
 
     assert sparkline([1, 1, 5, 5]) == "⣀⣿"
     assert sparkline([1, 1, 1, 5, 5]) == "⢀⣀⣿"
@@ -103,7 +103,6 @@ def test_sparkbars_normalized():
     assert get_sparkbar((342, 37, 745), width=20, normalized=True) == "⣶⣖⣒⣒⣒⣒⣒⣒⣒⣒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒"
     with pytest.raises(ValueError):
         get_sparkbar((1, 4, 5, 2, 4), normalized=True)
-
 
 
 def test_canvas():
