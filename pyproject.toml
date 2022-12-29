@@ -32,6 +32,9 @@ astream = "0.7.3"
 [tool.poetry.group.image.dependencies]
 pillow = "^9.3.0"
 
+[tool.poetry.scripts]
+brailliant = "brailliant.image:main"
+
 
 [tool.poetry.group.dev.dependencies]
 scalene = "^1.5.16"
