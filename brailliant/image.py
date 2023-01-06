@@ -1,3 +1,4 @@
+import sys
 import shutil
 from typing import Literal
 
@@ -155,9 +156,7 @@ def canvas_from_image(
         delta = ~delta
     return Canvas(img_width, img_height, delta)
 
-
-if __name__ == "__main__":
-
+def main() -> None:
     # Parse the command line arguments -
     #   -i or --input is the input image file
     #   -o or --output is the output image file
@@ -213,4 +212,7 @@ if __name__ == "__main__":
 
     canvas = Canvas(w, h)
 
-    print(canvas.draw_image(im))
+    sys.stdout.write(str(canvas.draw_image(im)))
+
+if __name__ == "__main__":
+    main()
