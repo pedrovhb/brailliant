@@ -216,3 +216,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+__all__ = ("canvas_from_image", "main", "resize_image")

@@ -449,4 +449,12 @@ if __name__ == "__main__":
     for test_case in test_cases:
         print(test_case)
 
-__all__ = ("sparkline", "sparkbars")
+
+__all__ = (
+    "get_sparkbar",
+    "get_sparkbar_normalized",
+    "Sparkbar",
+    "sparkbars",
+    "sparkline",
+)
+

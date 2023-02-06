@@ -617,3 +617,6 @@ elif __name__ == "__main__":
     ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀kind world!⠀⠀⠀⠀⡇
     ⣇⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣁⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡇
     """
+
+
+__all__ = ("Canvas", "CanvasText", "TextAlign")
