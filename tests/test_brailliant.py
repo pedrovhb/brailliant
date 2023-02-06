@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from brailliant import sparkline, sparkbars, coords_to_braille
+from brailliant import sparkline, coords_to_braille
 from brailliant.canvas import Canvas
-from brailliant.sparkline import get_sparkbar
+from brailliant.sparkbars import get_sparkbar
 
 
 def test_coords_to_braille():
@@ -16,61 +16,64 @@ def test_coords_to_braille():
 
 
 def test_coords_to_braille_exceptions():
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((0, -2))
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((1, -2))
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((0, 4))
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((2, 3))
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((-2, 0))
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((1, 0), (0, -2))
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((1, 0), (1, 4))
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((1, 0), (2, 3))
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((1, 0), (-1, 0))
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((1, 0), (0, -2), (1, 4))
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((1, 0), (0, -2), (2, 3))
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         coords_to_braille((1, 0), (0, -2), (-1, 0))
 
 
 def test_sparklines():
 
     # Test sparklines
-    assert sparkline([1]) == "£"
+    assert sparkline([1]) == "⡇"
 
     assert sparkline([1, 1, 5, 5]) == "⣀⣿"
-    assert sparkline([1, 1, 1, 5, 5]) == "⢀⣀⣿"
+    assert sparkline([1, 1, 1, 5, 5]) == "⣀⣸⡇"
 
     # Test sparkline with input data of length greater than 1
-    assert sparkline([1, 2, 3, 4, 5, 2, 3, 4, 3, 2, 1]) == "⢀⣴⣾⣴⣶⣄"
+    assert sparkline([1, 2, 3, 4, 5, 2, 3, 4, 3, 2, 1]) == "⣠⣾⣧⣾⣦⡀"
 
     # Test sparkline with filled=False
-    assert sparkline([1, 2, 3, 4, 5, 2, 3, 4, 3, 2, 1], filled=False) == "⢀⠔⠊⠔⠒⢄"
+    assert sparkline([1, 2, 3, 4, 5, 2, 3, 4, 3, 2, 1], filled=False) == "⡠⠊⠡⠊⠢⡀"
 
     # Test sparkline with min_val set to a non-None value
-    assert sparkline([1, 2, 3, 4, 5, 2, 3, -4, -3, 2, 1], min_val=2) == "⢀⣠⣾⣠⣀⣀"
+    assert sparkline([1, 2, 3, 4, 5, 2, 3, -4, -3, 2, 1], min_val=2) == "⠀⣴⡇⡄⠀⠀"
+
+    # Test sparkline with min_val set to a non-None negative value
+    assert sparkline([1, 2, 3, 4, 5, 2, 3, -4, -3, 2, 1], min_val=-4) == "⣶⣿⣷⡇⣰⡆"
 
     # Test sparkline with max_val set to a non-None value
-    assert sparkline([1, 2, 3, 4, 5, 2, 3, 4, 3, 2, 1], max_val=3) == "⢀⣾⣿⣾⣿⣆"
+    assert sparkline([1, 2, 3, 4, 5, 2, 3, 4, 3, 2, 1], max_val=3) == "⣴⣿⣷⣿⣷⡄"
 
     # Test sparkline with width set to a non-None value and an odd length
-    assert sparkline([1, 1, 1, 5, 5], width=10) == "⠀⠀⠀⠀⠀⠀⠀⢀⣀⣿"
+    assert sparkline([1, 1, 1, 5, 5], width=10) == "⣀⣸⡇⠀⠀⠀⠀⠀⠀⠀"
 
     # Test sparkline with width set to a non-None value and an even length
-    assert sparkline([1, 1, 5, 5], width=10) == "⠀⠀⠀⠀⠀⠀⠀⠀⣀⣿"
+    assert sparkline([1, 1, 5, 5], width=10) == "⣀⣿⠀⠀⠀⠀⠀⠀⠀⠀"
 
     # Test sparkline with width set to a non-None value and a larger length
     large_seq = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5] * 4
-    assert sparkline(large_seq, width=10) == "⣶⣿⣇⣀⣤⣴⣶⣶⣾⣿"
+    assert sparkline(large_seq, width=10) == "⣿⣿⣇⣀⣤⣴⣶⣿⣿⣿"
 
     # Test sparkline with all optional parameters set to non-None values
     assert (
@@ -81,7 +84,7 @@ def test_sparklines():
             min_val=0,
             max_val=6,
         )
-        == "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠔⠒⠔⣀⢄"
+        == "⡠⠔⠡⠄⠠⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
     )
 
 

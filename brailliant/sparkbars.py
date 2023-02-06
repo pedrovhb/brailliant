@@ -1,87 +1,8 @@
-from __future__ import annotations
-
-import itertools
 import math
-import random
 import shutil
-import sys
-import time
-from typing import Iterable, SupportsFloat, Literal
+from typing import Literal, Iterable
 
-from brailliant import (
-    BRAILLE_RANGE_START,
-    coords_braille_mapping,
-    coords_braille_mapping_filled,
-)
-
-
-def sparkline(
-    data: Iterable[float],
-    width: int | None = None,
-    filled: bool = True,
-    min_val: float | None = None,
-    max_val: float | None = None,
-) -> str:
-    """Return a sparkline of the numerical data.
-
-    Args:
-        data: The data to be represented as a sparkline.
-        width: The width of the sparkline. If None, the width will be the length of the data.
-        filled: Whether the sparkline should be filled.
-        min_val: The bottom of the sparkline, or `None` to use the minimum value in the data.
-        max_val: The top of the sparkline, or `None` to use the maximum value in the data.
-
-    Returns:
-        The sparkline as a string.
-
-    Examples:
-        >>> sparkline([1, 2, 3, 4, 5, 2, 3, 4, 3, 2, 1])
-        '⣠⣶⣧⣶⣦'
-
-        >>> sparkline([1, 2, 3, 4, 5, 2, 3, 4, 3, 2, 1], filled=False, width=20)
-        '         ⡠⠒⠡⠒⠢⣀⠔⠊⠔⠒⢄'
-    """
-    if not data:
-        return "⠀" * width if width is not None else ""
-
-    if not isinstance(data, (list, tuple)):
-        data = list(data)
-
-    if width is not None:
-        if width < 1:
-            raise ValueError("width must be at least 1")
-        if len(data) // 2 > width:
-            data = data[-width * 2 :]
-
-    _min_val = min(data) if min_val is None else min_val
-    _max_val = max(data) if max_val is None else max_val
-    scale = _max_val - _min_val
-    if scale == 0:
-        scale = 1
-
-    cols = []
-    for value in reversed(data):
-        val = round((value - _min_val) / scale * 3)
-        val = max(0, min(3, val))  # Clamp to [0, 3]
-        cols.append(val)
-
-    mapping = coords_braille_mapping_filled if filled else coords_braille_mapping
-
-    # Here, we'll use the mapping to convert the columns of braille dots into
-    # braille characters. We zip them with a 1-element offset so that we can
-    # get the one character that represents the two columns.
-    # With fillvalue=-1, the last column will not be present, in case the data
-    # is an odd length.
-    chars = [
-        BRAILLE_RANGE_START | mapping[0, right] | mapping[1, left]
-        for left, right in itertools.zip_longest(cols[::2], cols[1::2], fillvalue=-1)
-    ]
-
-    # Pad or crop the sparkline to the desired width.
-    if width is not None and len(chars) < width:
-        chars.extend([BRAILLE_RANGE_START] * (width - len(chars)))
-
-    return "".join(chr(c) for c in chars[::-1])
+from brailliant import coords_braille_mapping, BRAILLE_RANGE_START
 
 
 def sparkbars(
@@ -448,5 +369,3 @@ if __name__ == "__main__":
     ]
     for test_case in test_cases:
         print(test_case)
-
-__all__ = ("sparkline", "sparkbars")

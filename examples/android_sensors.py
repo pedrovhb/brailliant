@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
     async def main():
         # Run the sensor cleanup command before starting the loop
-        from brailliant.sparkline import get_sparkbar_normalized, sparkline
+        from brailliant.sparklines import get_sparkbar_normalized, sparkline
 
         line_data = [], [], []
         async for data in get_sensor_output():  # as sensor_data:

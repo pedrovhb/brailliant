@@ -3,13 +3,10 @@ from __future__ import annotations
 import itertools
 import math
 import operator
-import timeit
 from enum import Enum
 from functools import partialmethod
 from pathlib import Path
-from typing import Literal, Callable, Final, Iterable, Tuple, overload, Iterator, TYPE_CHECKING
-
-from PIL.Image import Dither
+from typing import Literal, Callable, Iterable, Tuple, overload, Iterator, TYPE_CHECKING
 
 from brailliant import BRAILLE_ROWS, BRAILLE_COLS, BRAILLE_RANGE_START, coords_braille_mapping
 
