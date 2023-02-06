@@ -225,35 +225,18 @@ class Canvas:
         self._canvas = contents
         self._text: list[CanvasText] = []
 
-    # def shifted(self, x: int, y: int) -> "Canvas":
-    #     """Returns a new canvas with the given coordinates added to all coordinates."""
-    #     canvas = self._canvas << (y * self.width_chars + x) * 8  # todo this is wrong
-    #     return Canvas(
-    #         self.width,
-    #         self.height,
-    #         canvas,
-    #     )
-
     @classmethod
     def with_cell_size(cls, width: int, height: int) -> Canvas:
+        """Returns a new canvas with the given width and height in number of characters
+        (as opposed to number of dots).
+        """
         return cls(width * BRAILLE_COLS, height * BRAILLE_ROWS)
 
-    def to_char_xy(self, x: int, y: int) -> int:
-        return y * self.width_chars + x
-
-    def to_cell_xy(self, x: int, y: int) -> tuple[int, int]:
-        return x // BRAILLE_COLS, y // BRAILLE_ROWS
-
-    def to_cell_offset(self, x: int, y: int) -> int:
-        return (y % BRAILLE_ROWS) * BRAILLE_COLS + (x % BRAILLE_COLS)
-
     def set_cell(self, x: int, y: int) -> Canvas:
-        self._canvas |= 1 << y * self.width_chars + x
-        return self
+        return self.with_changes(((x, y),), "add")
 
     def clear_cell(self, x: int, y: int) -> Canvas:
-        self._canvas &= ~(1 << y * self.width_chars + x)
-        return self
+        return self.with_changes(((x, y),), "clear")
 
     def fill(self, mode: Literal["add", "clear"] = "add") -> Canvas:
         """Fills the entire canvas with the given mode."""
@@ -325,7 +308,7 @@ class Canvas:
         coords: Iterable[tuple[int, int]],
         mode: Literal["add", "clear"],
     ) -> Canvas:
-        """Returns a new canvas with the given coordinates modified according to the mode."""
+        """Modify the canvas by setting or clearing the dots on the coordinates given by coords."""
         if mode not in ("add", "clear"):
             raise ValueError(f"Invalid mode {mode}")
 
@@ -393,10 +376,7 @@ class Canvas:
             start_tup = x0_or_start
             end_tup = y0_or_end
         else:
-            assert isinstance(x0_or_start, int)
-            assert isinstance(y0_or_end, int)
-            assert isinstance(x1, int)
-            assert isinstance(y1, int)
+            assert all(isinstance(i, int) for i in (x0_or_start, y0_or_end, x1, y1))
             start_tup = (x0_or_start, y0_or_end)
             end_tup = (x1, y1)
 
@@ -443,7 +423,6 @@ class Canvas:
         y1: int,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
-        """Draws a rectangle from start to end."""
         return self.with_changes(_draw_rectangle(x0, y0, x1, y1), mode)
 
     def draw_polygon(
@@ -451,7 +430,6 @@ class Canvas:
         coords: Iterable[tuple[int, int]],
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
-        """Draws a polygon from the given coordinates."""
         pol = tuple(_draw_polygon(coords))
         with open("pol.txt", "a") as f:
             f.write(f"{pol}\r")
@@ -464,7 +442,6 @@ class Canvas:
         size: int = 5,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
-        """Draws an arrow from start to end."""
         return self.with_changes(_draw_arrow(start, end_or_angle, size), mode)
 
     def apply_other(self, other: "Canvas", operation: Callable[[int, int], int]) -> Canvas:
@@ -472,8 +449,6 @@ class Canvas:
         return a new canvas with the result.
         """
         return Canvas(self.width, self.height, operation(self._canvas, other._canvas))
-
-    # def draw_image(self):
 
     def draw_image(
         self,
@@ -501,13 +476,7 @@ class Canvas:
         return f"Canvas({self.width}, {self.height}, {hex(self._canvas)})"
 
 
-if __name__ == "__live_coding__":
-    # c = Canvas(10, 10)
-    # c.draw_circle((4, 4), 2, angle_step=15)
-    # c.get_str()
-    pass
-
-elif __name__ == "__main__":
+if __name__ == "__main__":
 
     t = tuple(chr(BRAILLE_RANGE_START | i) for i in range(256))
     et = tuple(chr(BRAILLE_RANGE_START | i).encode() for i in range(256))
@@ -515,23 +484,31 @@ elif __name__ == "__main__":
     print("t", t)
     print("tb", tb)
 
-    c = Canvas(40, 40)
-    c.draw_circle((14, 4), 2, angle_step=1)
-    c.draw_circle((24, 4), 6, angle_step=1)
-    c.draw_circle((34, 4), 8, angle_step=1)
-    c.draw_circle((24, 24), 10, angle_step=1)
-    print(c.get_str())
-    print("\n\n")
-
-    print(f"Time to run get_str: {timeit.timeit(c.get_str, number=1000)}")
-    print(
-        f"Time to run get_str_control_chars: {timeit.timeit(c.get_str_control_chars, number=1000)}"
-    )
-
-    canvas = Canvas(40, 40)
-    canvas.draw_circle((15, 15), 10)
+    canvas_0 = Canvas(40, 40)
+    canvas_0.draw_circle((14, 4), 2, angle_step=1)
+    canvas_0.draw_circle((24, 4), 6, angle_step=1)
+    canvas_0.draw_circle((34, 4), 8, angle_step=1)
+    canvas_0.draw_circle((24, 24), 10, angle_step=1)
+    canvas_0.draw_rectangle(13, 13, 35, 35)
     print("=====")
-    print(canvas)
+    print(canvas_0)
+    """
+    ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+    ⠀⠀⠀⠀⠀⠀⢸⠉⢉⣩⠽⠛⠛⠻⢭⣉⠉⢱⠀⠀
+    ⠀⠀⠀⠀⠀⠀⢸⢠⠏⠀⠀⠀⠀⠀⠀⠈⢧⢸⠀⠀
+    ⠀⠀⠀⠀⠀⠀⢸⡏⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⠀⠀
+    ⠀⠀⠀⠀⠀⠀⢸⢧⠀⠀⠀⠀⠀⠀⠀⠀⢠⢿⠀⠀
+    ⠀⠀⠀⠀⠀⠀⢸⠈⢧⣀⠀⠀⠀⠀⢀⣠⠏⢸⠀⠀
+    ⠀⠀⠀⠀⠀⠀⠸⠤⠤⠬⠽⠶⠶⠾⠭⢤⣤⣼⣀⠀
+    ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡤⠖⠒⢦⣞⠉⠀⠀⠈⠙
+    ⠀⠀⠀⠀⠀⠀⡴⠲⡄⡞⠀⠀⠀⡏⠘⡆⠀⠀⠀⠀
+    ⠀⠀⠀⠀⠀⠀⠙⠚⠁⢳⡀⠀⠀⢧⣰⠃⠀⠀⠀⠀
+    """
+
+    canvas_1 = Canvas(40, 40)
+    canvas_1.draw_circle((15, 15), 10)
+    print("=====")
+    print(canvas_1)
     """
     ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -562,7 +539,7 @@ elif __name__ == "__main__":
     ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     """
 
-    canvas_3 = canvas | canvas_2
+    canvas_3 = canvas_1 | canvas_2
     print("=====")
     print(canvas_3)
     """

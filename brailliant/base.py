@@ -5,6 +5,9 @@ BRAILLE_ROWS: Final[int] = 4
 
 BRAILLE_RANGE_START: Final[int] = 0x2800
 
+CHAR_HEIGHT: Final[int] = BRAILLE_ROWS
+CHAR_WIDTH: Final[int] = BRAILLE_COLS
+
 coords_braille_mapping: Final[dict[tuple[int, int], int]] = {
     (0, 3): 1 << 0,  # ⠁
     (0, 2): 1 << 1,  # ⠂

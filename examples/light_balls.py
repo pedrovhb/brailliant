@@ -5,14 +5,16 @@ import atexit
 import math
 import random
 import shutil
+import textwrap
 from abc import ABC
 from collections import deque
-from itertools import pairwise
+from itertools import pairwise, chain
 
 from astream.event_like import Pulse
 from astream.on_time import OnTime
 from pymunk import Vec2d
 
+from brailliant import CHAR_WIDTH, CHAR_HEIGHT
 from brailliant.canvas import Canvas
 import pymunk
 
@@ -27,7 +29,7 @@ w, h = shutil.get_terminal_size()
 
 UI_W = 10
 UI_W_PADDING = 3
-CANVAS_W, CANVAS_H = w * 2 - UI_W - UI_W_PADDING, h
+CANVAS_W, CANVAS_H = w * 2 - 1, h
 
 # SIM_SCALE = 0.5
 SIM_SCALE = 1
@@ -278,6 +280,63 @@ def get_objs():
     ]
 
 
+def raycast(
+    space: pymunk.Space,
+    light_start: Vec2d,
+    light_end: Vec2d,
+    light_length: float,
+    max_bounces: int | None = None,
+    ignored_shapes: list[pymunk.Shape] | None = None,
+) -> list[tuple[Vec2d, Vec2d]]:
+    """Return the point where the light ray hits the wall."""
+    if ignored_shapes is None:
+        ignored_shapes = []
+
+    # light_end = light_start + Vec2d(light_length, 0).rotated_degrees(light_angle)
+    seg_query = space.segment_query(
+        (light_start.x, light_start.y),
+        (light_end.x, light_end.y),
+        0,
+        pymunk.ShapeFilter(),
+    )
+    seg_query_sorted = list(
+        sorted(
+            [sq for sq in seg_query if sq.shape not in ignored_shapes],
+            key=lambda sq: sq.alpha,
+        )
+    )
+
+    if not seg_query_sorted:
+        yield light_start, light_end
+        return
+
+    col_query = seg_query_sorted[0]
+    light_end = col_query.point
+    yield light_start, light_end
+
+    crt_ray = light_end - light_start
+
+    consumed = crt_ray.length
+    light_length -= consumed
+    if light_length <= 0:
+        return
+    col_shape = col_query.shape
+    normal = col_query.normal
+    if isinstance(col_shape, pymunk.Segment):
+        normal = normal.rotated_degrees(crt_ray.get_angle_degrees_between(normal) * 2)
+    next_start = light_end
+    next_end = next_start + normal * light_length
+    if light_length > 1 and (max_bounces is None or max_bounces > 0):
+        yield from raycast(
+            space,
+            next_start,
+            next_end,
+            light_length,
+            max_bounces - 1 if max_bounces is not None else None,
+            ignored_shapes=[col_shape],
+        )
+
+
 async def show_balls() -> None:
     """Create the canvas and show our balls."""
 
@@ -305,6 +364,8 @@ async def show_balls() -> None:
 
     gravy_on = True
     time_on = True
+    lasers_bounce_on = False
+    lasers_on = False
     MAX_G = 499
     gravy = Vec2d(0, -98.1)
     space.gravity = gravy
@@ -312,9 +373,11 @@ async def show_balls() -> None:
     time_step_pulse_back = Pulse()
 
     async def process_inputs() -> None:
-        nonlocal time_on, gravy_on, gravy
+        nonlocal time_on, gravy_on, gravy, lasers_on, lasers_bounce_on
 
         async for ch in async_getch():
+
+            print(ch)
 
             # Toggle gravity on g
             if ch.lower() == b"g":
@@ -328,6 +391,18 @@ async def show_balls() -> None:
             # Toggle time on t
             elif ch.lower() == b"t":
                 time_on = not time_on
+
+            elif ch.lower() == b"x":
+                time_step_pulse.fire()
+
+            elif ch.lower() == b"z":
+                time_step_pulse_back.fire()
+
+            elif ch.lower() == b"l":
+                lasers_on = not lasers_on
+
+            elif ch.lower() == b"b":
+                lasers_bounce_on = not lasers_bounce_on
 
             elif ch == b"\x1b[C":  # Right arrow
                 space.gravity = space.gravity.rotated_degrees(6)
@@ -343,136 +418,29 @@ async def show_balls() -> None:
             elif ch == b"\x1b[B":  # Down arrow
                 space.gravity *= 0.98
 
-            elif ch == b"x":
-                time_step_pulse.fire()
-            elif ch == b"z":
-                time_step_pulse_back.fire()
-
     loop = asyncio.get_event_loop()
     t = loop.time()
     time_step = 0.01
     dt = time_step
 
     def draw_light(copy: Canvas) -> None:
-        def raycast(
-            light_start: Vec2d,
-            light_end: Vec2d,
-            light_length: float,
-            ignored_shapes: list[pymunk.Shape] | None = None,
-        ) -> list[tuple[Vec2d, Vec2d]]:
-            """Return the point where the light ray hits the wall."""
-            if ignored_shapes is None:
-                ignored_shapes = []
-
-            # light_end = light_start + Vec2d(light_length, 0).rotated_degrees(light_angle)
-            seg_query = space.segment_query(
-                (light_start.x, light_start.y),
-                (light_end.x, light_end.y),
-                0,
-                pymunk.ShapeFilter(),
-            )
-            seg_query_sorted = list(
-                sorted(
-                    [sq for sq in seg_query if sq.shape not in ignored_shapes],
-                    key=lambda sq: sq.alpha,
-                )
-            )
-
-            if not seg_query_sorted:
-                yield light_start, light_end
-                return
-
-            col_query = seg_query_sorted[0]
-            light_end = col_query.point
-            yield light_start, light_end
-
-            crt_ray = light_end - light_start
-
-            consumed = crt_ray.length
-            light_length -= consumed
-            if light_length <= 0:
-                return
-            col_shape = col_query.shape
-            normal = col_query.normal
-            if isinstance(col_shape, pymunk.Segment):
-                normal = normal.rotated_degrees(crt_ray.get_angle_degrees_between(normal) * 2)
-            next_start = light_end
-            next_end = next_start + normal * light_length
-            if light_length > 1:
-                yield from raycast(
-                    next_start,
-                    next_end,
-                    light_length,
-                    ignored_shapes=[col_shape],
-                )
-            return
-            if not seg_query:
-                yield (light_start, light_end)
-            else:
-                next_point = light_end = seg_query.point - seg_query.normal
-                yield (light_start, light_end)
-
-                consumed_light_length = light_start.get_distance(next_point)
-                remaining_light_length = light_length - consumed_light_length
-
-                if remaining_light_length > 1 and consumed_light_length > 0.1:
-                    yield from raycast(
-                        seg_query.point,
-                        seg_query.normal.angle_degrees,
-                        remaining_light_length,
-                    )
 
         light_start = Vec2d(2, CANVAS_H / 2)
-        light_end = Vec2d(CANVAS_W - 2, CANVAS_H / 2)
-        # rays = raycast(light_start, 0, light_start.get_distance(light_end))
-        rays = raycast(light_start, light_end, CANVAS_W * 3)
-        # print(rays)
-        # exit()
-        for ray_start, ray_end in rays:
-            try:
-                copy.draw_line(*map(int, (ray_start.x, ray_start.y, ray_end.x, ray_end.y)))
-            except ValueError:
-                pass
-        return
-
-        # if seg_query is None:
-        #     return light_end
-
-        light_start = Vec2d(2, CANVAS_H / 2)
-        light_angle = 20
-        light_length = CANVAS_W - 2
-        raycast(light_start, light_angle, light_length)
-        return
-        light_end = light_start + Vec2d(light_length, 0).rotated_degrees(light_angle)
-        # light_end = Vec2d(CANVAS_W - CANVAS_W / 3, CANVAS_H / 2)
-        seg_query = space.segment_query_first(
-            (light_start.x, light_start.y),
-            (light_end.x, light_end.y),
-            0,
-            pymunk.ShapeFilter(),
+        rays = chain.from_iterable(
+            raycast(
+                space,
+                light_start,
+                light_start + Vec2d(200, 0).rotated_degrees(i),
+                CANVAS_W * 0.8,
+                max_bounces=8 if lasers_bounce_on else 0,
+            )
+            for i in range(-20, 21)
         )
-        if seg_query is not None:
 
-            # light_end = Vec2d(seg_query.point.x, light_end.y)
-            light_end = seg_query.point
-            # print("\x1b[1;31m", end="", flush=True)
-            # Escape sequence to save cursor position: \x1b[s
-            # print(f"\033[s\x1b[{math.ceil(CANVAS_H/4)+15};2Hhit   ", end="\033[u", flush=True)
-            # Position cursor at
-            # sys.stderr.write(repr(seg_query))
-        # else:
-        #     print(f"\033[s\x1b[{math.ceil(CANVAS_H/4)+15};2Hno hit", end="\033[u", flush=True)
-        # print(f"\x1b[{math.ceil(CANVAS_H/4)+5};2H", end="", flush=True)
-        # print("\x1b[1;32m", end="", flush=True)
-        # Changes color to green
+        # copy.write_text(10, copy.height - 30, str(space.current_time_step))
 
-        copy.draw_line(*map(int, (light_start.x, light_start.y, light_end.x, light_end.y)))
-        # start_point = (0, CANVAS_H // 2)
-        # direction = Vec2d(1, 0)
-        # canvas.draw_line(
-        #     (int(start_point[0]), int(start_point[1])),
-        #     (int(start_point[0] + direction.x * 100), int(start_point[1] + direction.y * 100)),
-        # )
+        for ray_start, ray_end in rays:
+            copy.draw_line(*map(int, (ray_start.x, ray_start.y, ray_end.x, ray_end.y)))
 
     async def draw():
         """Draw the current state of the simulation."""
@@ -480,34 +448,45 @@ async def show_balls() -> None:
 
         for o in objs:
             copy = o.draw(copy)
+        if lasers_on:
+            draw_light(copy)
 
-        copy.draw_arrow(
-            (
-                CANVAS_W + UI_W // 2 + UI_W_PADDING,
-                CANVAS_H // 2,
-            ),
-            space.gravity.angle_degrees,
-            int(5 * space.gravity.length / MAX_G * UI_W // 2),
-            # 6,
-        ).draw_circle(
-            (CANVAS_W + UI_W // 2 + UI_W_PADDING, CANVAS_H // 2),
-            UI_W // 2 + UI_W_PADDING // 2,
-        )
-        draw_light(copy)
-
-        s = copy.get_str_control_chars()
-        all_errs = "\033[K\n".join(err)
         fps = 1 / dt
-        print(
-            s + f"\x1b[{math.ceil(CANVAS_H/4)+1};2H"
-            f"\n  g - toggle gravity\t\t\t\tt: toggle time\n"
-            f"  up/down arrows: change gravity\t\tleft/right arrows: rotate gravity\n\n"
-            f"  gravity: {space.gravity.x:.3f}, {space.gravity.y:.3f}\n"
-            f"  fps: {fps:05.1f} \n"
-            f"\n{all_errs}\x1b[0;0H",
-            end="",
-            flush=True,
+        stats = [
+            f"fps: {fps:03.0f}",
+            f"gravity: {space.gravity.length:03.2f} ({space.gravity.angle_degrees:03.2f}°)",
+            f"gravity on: {gravy_on}",
+            f"time on: {time_on}",
+            f"laz0rs on: {lasers_on}",
+            f"laz0r bounce: {lasers_bounce_on}",
+        ]
+        keys = [
+            "g: toggle gravity",
+            "t: toggle time",
+            "up/down: gravity strength",
+            "left/right: gravity angle",
+            "l: toggle laz0rs",
+            "b: toggle laz0r bounce",
+        ]
+
+        ui = "\n".join(
+            [
+                *stats,
+                "",
+                *keys,
+            ]
         )
+        ui = textwrap.indent(ui, " " * UI_W_PADDING)
+        s = "".join(
+            (
+                "\033[J",  # Clear screen
+                "\033[0;0H",  # Move cursor to top left
+                copy.get_str_control_chars(),  # Draw the canvas
+                "\n\n",  # Move cursor down
+                ui,  # Draw the UI
+            )
+        )
+        print(s, end="", flush=True)
 
     async def gravity_from_sensors() -> None:
         while True:
