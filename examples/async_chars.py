@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import os
+
 import sys
 import termios
 import tty
-import asyncio
-import os
 from collections import Counter
 from typing import AsyncGenerator
 
@@ -68,7 +69,9 @@ if __name__ == "__main__":
                     continue
 
                 common, common_count = c.most_common(1)[0]
-                print(f"Wow! {count} keys typed so far. {common_count} just for {common}!")
+                print(
+                    f"Wow! {count} keys typed so far. {common_count} just for {common}!"
+                )
                 if count > 60:
                     print("Alright, that's enough. Bye!")
                     break

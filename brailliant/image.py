@@ -1,17 +1,17 @@
+import argparse
 import shutil
 import sys
 from functools import partial
 from pathlib import Path
-import argparse
 
 from brailliant.base import BRAILLE_COLS, BRAILLE_ROWS, braille_table_str
 from brailliant.canvas import Canvas
 
 try:
     import PIL
+    from PIL import ImageChops, ImageFilter
 
-    from PIL.Image import Image, Resampling, Dither, open as image_open
-    from PIL import ImageFilter, ImageChops
+    from PIL.Image import Dither, Image, open as image_open, Resampling
 except ImportError:
     raise ImportError(
         "Image display requires the Pillow library. Please install it with 'pip install Pillow'."
@@ -86,7 +86,11 @@ def main() -> None:
     image = image_open(args.input)
 
     term_size = shutil.get_terminal_size()
-    size = args.size if args.size else (term_size[0] * BRAILLE_COLS, term_size[1] * BRAILLE_ROWS)
+    size = (
+        args.size
+        if args.size
+        else (term_size[0] * BRAILLE_COLS, term_size[1] * BRAILLE_ROWS)
+    )
     log(f"Converting image to braille with size {'x'.join(map(str, size))}")
 
     result_text = image_to_braille(
@@ -122,7 +126,9 @@ def image_to_braille(
         image_bg = image.reduce((BRAILLE_COLS, BRAILLE_ROWS))
         canvas = Canvas(image.width, image.height)
         canvas.draw_image(
-            image.filter(ImageFilter.EDGE_ENHANCE_MORE).filter(ImageFilter.EDGE_ENHANCE_MORE)
+            image.filter(ImageFilter.EDGE_ENHANCE_MORE).filter(
+                ImageFilter.EDGE_ENHANCE_MORE
+            )
         )
         result_text = str(canvas)
         chars = []
@@ -134,10 +140,15 @@ def image_to_braille(
                 else:
                     bg_r, bg_g, bg_b = image_bg.getpixel((x, y))
 
-                if x >= image.width * BRAILLE_ROWS or y >= image_bg.height * BRAILLE_COLS:
+                if (
+                    x >= image.width * BRAILLE_ROWS
+                    or y >= image_bg.height * BRAILLE_COLS
+                ):
                     fg_r, fg_g, fg_b = (0, 0, 0)
                 else:
-                    fg_r, fg_g, fg_b = image.getpixel((x * BRAILLE_COLS, y * BRAILLE_ROWS))
+                    fg_r, fg_g, fg_b = image.getpixel(
+                        (x * BRAILLE_COLS, y * BRAILLE_ROWS)
+                    )
 
                 code_bg = f"48;2;{bg_r};{bg_g};{bg_b}"
                 code_fg = f"38;2;{fg_r};{fg_g};{fg_b}"

@@ -1,6 +1,6 @@
 import operator
 from functools import reduce
-from typing import Final, Iterable
+from typing import Final
 
 BRAILLE_COLS: Final[int] = 2
 BRAILLE_ROWS: Final[int] = 4
@@ -116,7 +116,7 @@ coords_braille_mapping_filled = {
 }
 
 
-def coords_to_braille(*coords: tuple[int, int], filled: bool=False) -> str:
+def coords_to_braille(*coords: tuple[int, int], filled: bool = False) -> str:
     """Converts a tuple of coordinates to a braille character.
 
     Args:
@@ -144,4 +144,3 @@ def coords_to_braille(*coords: tuple[int, int], filled: bool=False) -> str:
     for coord in coords:
         braille_char |= mapping[coord]
     return braille_table_str[braille_char]
-

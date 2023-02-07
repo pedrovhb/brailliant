@@ -96,9 +96,12 @@ def show_balls() -> None:
             ball.draw(copy)
 
         s = copy.get_str_control_chars()
-        
-        print(s + f"\x1b[16;0H fps: {fps:.1f}                 \x1b[0;0H", flush=True, end="")
-        
+
+        print(
+            s + f"\x1b[16;0H fps: {fps:.1f}                 \x1b[0;0H",
+            flush=True,
+            end="",
+        )
 
 
 if __name__ == "__main__":

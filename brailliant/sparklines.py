@@ -2,16 +2,12 @@ from __future__ import annotations
 
 import itertools
 import math
-import random
-import shutil
-import sys
-import time
-from typing import Iterable, SupportsFloat, Literal
+from typing import Iterable, Literal
 
 from brailliant import (
-    BRAILLE_RANGE_START,
+    braille_table_str,
     coords_braille_mapping,
-    coords_braille_mapping_filled, braille_table_str,
+    coords_braille_mapping_filled,
 )
 
 INV_LOG1P_1 = 1 / math.log1p(1)
@@ -73,6 +69,7 @@ def sparkline_non_normalized(
         chars.extend(braille_table_str[0] * (width - len(chars)))
 
     return "".join(chars)
+
 
 def sparkline(
     data: Iterable[float],

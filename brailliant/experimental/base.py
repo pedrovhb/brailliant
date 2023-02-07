@@ -1,15 +1,5 @@
 from __future__ import annotations
-import codecs
-import math
-import string
-import stringprep
-import time
-from codecs import Codec
 
-from codecs import Codec
-from itertools import islice
-
-import bitstring as bitstring
 from typing import Iterable
 
 BRAILLE_RANGE_START = 0x2800

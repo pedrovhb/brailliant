@@ -1,14 +1,10 @@
 import itertools
 import math
-from typing import Literal, Iterable
+from typing import Iterable
 
 from brailliant import (
-    coords_braille_mapping,
-    BRAILLE_RANGE_START,
     braille_table_str,
-    BRAILLE_COLS,
-    BRAILLE_ROWS,
-    coords_to_braille,
+    coords_braille_mapping,
 )
 
 
