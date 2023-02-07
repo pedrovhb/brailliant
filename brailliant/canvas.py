@@ -8,7 +8,13 @@ from functools import partialmethod
 from pathlib import Path
 from typing import Literal, Callable, Iterable, Tuple, overload, Iterator, TYPE_CHECKING
 
-from brailliant import BRAILLE_ROWS, BRAILLE_COLS, BRAILLE_RANGE_START, coords_braille_mapping
+from brailliant import (
+    BRAILLE_ROWS,
+    BRAILLE_COLS,
+    BRAILLE_RANGE_START,
+    coords_braille_mapping,
+    braille_table_str,
+)
 
 if TYPE_CHECKING:
     try:
@@ -244,10 +250,9 @@ class Canvas:
     set_all = partialmethod(fill, mode="add")
 
     def get_str(self) -> str:
-        braille_str = tuple(chr(BRAILLE_RANGE_START | i) for i in range(256))
         lines = [
             "".join(
-                braille_str[self._canvas >> i * 8 & 0xFF]
+                braille_table_str[self._canvas >> i * 8 & 0xFF]
                 for i in range(self.width_chars * y, self.width_chars * (y + 1))
             )
             for y in range(self.height_chars - 1, -1, -1)
