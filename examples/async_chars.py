@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-
 import sys
 import termios
 import tty
@@ -18,12 +17,13 @@ async def async_getch() -> AsyncGenerator[bytes, None]:
     # Save the current terminal settings
     old_settings = termios.tcgetattr(sys.stdin)
 
-    # Set the terminal to cbreak mode and make sys.stdin non-blocking
-    tty.setcbreak(sys.stdin)
-    os.set_blocking(sys.stdin.fileno(), False)
-
     # Save the initial state of stdin in variable "old_stdin_blocking"
     old_stdin_blocking = os.get_blocking(sys.stdin.fileno())
+
+    # Set the terminal to cbreak mode and make sys.stdin non-blocking
+    tty.setcbreak(sys.stdin)
+
+    os.set_blocking(sys.stdin.fileno(), False)
 
     # Add a reader for sys.stdin
     ev = asyncio.Event()
@@ -33,7 +33,7 @@ async def async_getch() -> AsyncGenerator[bytes, None]:
     try:
         while True:
             await ev.wait()
-            char = sys.stdin.buffer.read()
+            char = sys.stdin.buffer.read(-1)
             if not char:
                 ev.clear()
                 continue
@@ -69,9 +69,7 @@ if __name__ == "__main__":
                     continue
 
                 common, common_count = c.most_common(1)[0]
-                print(
-                    f"Wow! {count} keys typed so far. {common_count} just for {common}!"
-                )
+                print(f"Wow! {count} keys typed so far. {common_count} just for {common}!")
                 if count > 60:
                     print("Alright, that's enough. Bye!")
                     break
