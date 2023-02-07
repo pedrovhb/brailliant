@@ -43,6 +43,11 @@ def main() -> None:
         add_help=True,
     )
     parser.add_argument(
+        "input",
+        type=Path,
+        help="The input image.",
+    )
+    parser.add_argument(
         "-o",
         "--output",
         default=None,
