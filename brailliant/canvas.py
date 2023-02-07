@@ -171,6 +171,7 @@ def _draw_image(image: str | Path | "Image") -> Iterator[tuple[int, int]]:
     image = image.convert("1", dither=Dither.FLOYDSTEINBERG)
     im_height = image.height
     im_width = image.width
+    # todo - there's definitely a more efficient way to do this
     for i, point in enumerate(image.getdata()):
         y, x = divmod(i, im_width)
         y = im_height - y
