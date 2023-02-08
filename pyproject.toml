@@ -37,7 +37,7 @@ pillow = "^9.3.0"
 brailliant = "brailliant.cli:display_braille_image"
 bimg = "brailliant.cli:display_braille_image"
 bbin = "brailliant.cli:display_braille_repr"
-bspar = "brailliant.cli:display_sparkline"
+bspark = "brailliant.cli:display_sparkline"
 
 
 [tool.poetry.group.dev.dependencies]
