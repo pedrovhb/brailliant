@@ -50,7 +50,7 @@ def sparkline_non_normalized(
             raise ValueError("width must be at least 1")
 
         # Use only latest values to fill the width
-        if len(data) // 2 > width:
+        if math.ceil(len(data) / 2) > width:
             data = data[-width * 2 :]
 
     mapping = coords_braille_mapping_filled if filled else coords_braille_mapping

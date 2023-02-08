@@ -244,9 +244,7 @@ class Canvas:
 
     def fill(self, mode: Literal["add", "clear"] = "add") -> Canvas:
         """Fills the entire canvas with the given mode."""
-        self._canvas = (
-            (1 << self.width_chars * self.height_chars * 8) - 1 if mode == "add" else 0
-        )
+        self._canvas = (1 << self.width_chars * self.height_chars * 8) - 1 if mode == "add" else 0
         return self
 
     clear_all = partialmethod(fill, mode="clear")
@@ -262,9 +260,7 @@ class Canvas:
         ]
 
         # Add text
-        text_lines = itertools.chain.from_iterable(
-            txt.in_split_lines() for txt in self._text
-        )
+        text_lines = itertools.chain.from_iterable(txt.in_split_lines() for txt in self._text)
         for text in text_lines:
             char_length = len(text.text)
             char_y = round(text.y / BRAILLE_ROWS)
@@ -291,9 +287,7 @@ class Canvas:
 
             txt_start = char_x
             txt_end = char_x + char_length
-            lines[char_y] = "".join(
-                (lines[char_y][:txt_start], txt, lines[char_y][txt_end:])
-            )
+            lines[char_y] = "".join((lines[char_y][:txt_start], txt, lines[char_y][txt_end:]))
 
         return "\n".join(lines)
 
@@ -453,9 +447,7 @@ class Canvas:
     ) -> Canvas:
         return self.with_changes(_draw_arrow(start, end_or_angle, size), mode)
 
-    def apply_other(
-        self, other: "Canvas", operation: Callable[[int, int], int]
-    ) -> Canvas:
+    def apply_other(self, other: "Canvas", operation: Callable[[int, int], int]) -> Canvas:
         """Apply a binary operation to the (integer value of) this canvas and another canvas, and
         return a new canvas with the result.
         """

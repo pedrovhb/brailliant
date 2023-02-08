@@ -34,7 +34,10 @@ astream = "0.7.3"
 pillow = "^9.3.0"
 
 [tool.poetry.scripts]
-brailliant = "brailliant.image:main"
+brailliant = "brailliant.cli:display_braille_image"
+bimg = "brailliant.cli:display_braille_image"
+bbin = "brailliant.cli:display_braille_repr"
+bspar = "brailliant.cli:display_sparkline"
 
 
 [tool.poetry.group.dev.dependencies]
