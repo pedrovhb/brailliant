@@ -6,6 +6,7 @@ import shutil
 import sys
 import textwrap
 import time
+from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from pathlib import Path
 from textwrap import TextWrapper
@@ -199,7 +200,7 @@ def display_image(
         log(f"Output written to {output_file}")
     else:
         log(f"Writing output to {output_file}")
-        sys.stdout.write(result_text)
+        print(result_text)
 
 
 async def display_video(
@@ -222,9 +223,45 @@ async def display_video(
     # Scroll down enough that the video will be displayed entirely
     vertical_lines = size[1] // BRAILLE_ROWS
 
+    # Scroll down enough that the video will be displayed entirely
     scroll_down(vertical_lines)
     scroll_up(vertical_lines)
+    sys.stdout.write("\033[s")
 
+    if output is None:
+        output_file = sys.stdout
+    else:
+        output_file = output.open("w")
+
+    process_pool = ProcessPoolExecutor()
+
+    # Max size here will define the max number of frames queued for processing
+    # at any given time. This is to prevent too many frames from being queued
+    # and having to wait for future frames to be processed before a previous
+    # frame is.
+    frame_queue = asyncio.Queue(maxsize=20)
+
+    # todo - get frame interval from video so we don't show frames faster than
+    #  the video is playing
+
+    # todo - handle closing the process pool and queue
+
+    async def show_frames():
+        while True:
+            new_frame_fut = await frame_queue.get()
+            new_frame = await new_frame_fut
+            if new_frame is None:
+                frame_queue.task_done()
+                break
+            print(new_frame, end="\033[u", flush=True, file=output_file)
+            frame_queue.task_done()
+
+            # todo - use asynkets to space frames apart correctly
+            await asyncio.sleep(1 / fps if fps else 1 / 30)
+
+    asyncio.create_task(show_frames())
+
+    loop = asyncio.get_running_loop()
     async for frame in extract_frames_from_video(
         video_file=file,
         fps=fps,
@@ -232,18 +269,26 @@ async def display_video(
         height=size[1],
         pil_images=True,
     ):
-        result_text = image_to_braille(
+        fn = partial(
+            image_to_braille,
             image=frame,
             size=size,
             keep_ratio=keep_ratio,
             color=color,
         )
-        # Save current cursor position
-        # sys.stdout.write("\033[u")
-        sys.stdout.write(f"\033[1;0H")
-        sys.stdout.write(result_text)
-        # todo - output to file
-        # todo - handle e.g. urls too
+        fut = loop.run_in_executor(process_pool, fn)
+
+        # The `await` here prevents the queue from filling up too much -
+        # it will only queue up to `maxsize` frames at a time, and the
+        # ffmpeg process won't run off producing frames we're not ready
+        # to display yet
+        await frame_queue.put(fut)
+
+    await frame_queue.join()
+
+    # Scroll down enough that the video will be displayed entirely
+    # scroll_down(vertical_lines)
+    # scroll_up(vertical_lines)
 
 
 def bin_to_braille(

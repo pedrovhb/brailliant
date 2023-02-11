@@ -80,12 +80,17 @@ async def extract_frames_from_video(
     # Calculate the number of bytes per frame
     bytes_per_frame = 3 * width * height
 
+    vf = f"fps={fps},scale={dimensions}" if fps else f"scale={dimensions}"
+
+    # Adjust gamma to make the image brighter
+    vf += ",eq=gamma=1.5"
+
     process = await asyncio.create_subprocess_exec(
         "ffmpeg",
         "-i",
         video_file,
         "-vf",
-        "fps=" + str(fps) + ",scale=" + dimensions,
+        vf,
         "-pix_fmt",
         "rgb24",
         "-f",
@@ -174,8 +179,7 @@ def _canvas_image_color_with_bg(image: Image) -> str:
         # Reset style and add a newline
         chars.append("\033[0m\n")
 
-    # Return the result without the last newline, but with the last reset style
-    return "".join(chars[:-1]) + "\033[0m"
+    return "".join(chars)
 
 
 def _canvas_image_color_no_bg(image: Image) -> str:
@@ -206,7 +210,8 @@ def _canvas_image_color_no_bg(image: Image) -> str:
             chars.append(f"\033[{code}m{ch}")
         # Reset style and add a newline
         chars.append("\033[0m\n")
-    return "".join(chars[:-1]) + "\033[0m"
+
+    return "".join(chars)
     #
     #     print("\033[0m")
     #
