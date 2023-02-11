@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import itertools
 import math
 import operator
@@ -317,14 +318,6 @@ class Canvas:
 
         delta = 0
         for x, y in coords:
-
-            if (
-                x < 0
-                or y < 0
-                or x >= self.width_chars * BRAILLE_COLS
-                or y >= self.height_chars * BRAILLE_ROWS
-            ):
-                continue
 
             cell_x, char_x = divmod(x, BRAILLE_COLS)
             cell_y, char_y = divmod(y, BRAILLE_ROWS)
