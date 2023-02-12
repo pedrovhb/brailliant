@@ -254,8 +254,10 @@ class Canvas:
     def get_str(self) -> str:
         lines = [
             "".join(
-                braille_table_str[self._canvas >> i * 8 & 0xFF]
-                for i in range(self.width_chars * y, self.width_chars * (y + 1))
+                [
+                    braille_table_str[self._canvas >> i * 8 & 0xFF]
+                    for i in range(self.width_chars * y, self.width_chars * (y + 1))
+                ]
             )
             for y in range(self.height_chars - 1, -1, -1)
         ]
@@ -307,6 +309,9 @@ class Canvas:
         """Returns a string with control characters to draw the canvas."""
         return self.get_str().replace("\n", "\x1b[1B\r")
 
+    def _is_valid_coord(self, xy: tuple[int, int]) -> bool:
+        return 0 <= xy[0] < self.width and 0 <= xy[1] < self.height
+
     def with_changes(
         self,
         coords: Iterable[tuple[int, int]],
@@ -317,7 +322,7 @@ class Canvas:
             raise ValueError(f"Invalid mode {mode}")
 
         delta = 0
-        for x, y in coords:
+        for x, y in filter(self._is_valid_coord, coords):
 
             cell_x, char_x = divmod(x, BRAILLE_COLS)
             cell_y, char_y = divmod(y, BRAILLE_ROWS)
@@ -337,8 +342,8 @@ class Canvas:
         self,
         x0_or_start: tuple[int, int],
         y0_or_end: tuple[int, int],
-        x1: None,
-        y1: None,
+        x1: None = None,
+        y1: None = None,
         dotting: int = ...,
         mode: Literal["add", "clear"] = ...,
     ) -> Canvas:

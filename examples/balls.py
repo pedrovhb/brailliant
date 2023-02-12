@@ -95,7 +95,7 @@ def show_balls() -> None:
             ball.bounce(canvas.width, canvas.height, balls)
             ball.draw(copy)
 
-        s = copy.get_str_control_chars()
+        s = copy.get_str()
 
         print(
             s + f"\x1b[16;0H fps: {fps:.1f}                 \x1b[0;0H",

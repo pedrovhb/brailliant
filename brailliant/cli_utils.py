@@ -136,7 +136,7 @@ def image_to_braille(
 
     if color:
         # return _canvas_image_color_with_bg(image)
-        return _canvas_image_color_no_bg(image)
+        return _canvas_image_color_bg(image)
     else:
         return _canvas_image_monochrome(image)
 
@@ -186,12 +186,7 @@ def _canvas_image_color_no_bg(image: Image) -> str:
     """Draw an image as color to a canvas and return the result as a string."""
 
     image_color = image.reduce((BRAILLE_COLS, BRAILLE_ROWS))
-    image = (
-        image.filter(ImageFilter.EDGE_ENHANCE_MORE)
-        # .convert("1", dither=Dither.FLOYDSTEINBERG)
-        # .filter(ImageFilter.EDGE_ENHANCE_MORE)
-    )
-    # Lighten the image
+    image = image.filter(ImageFilter.EDGE_ENHANCE_MORE)
     cell_colors = list(image_color.getdata())
 
     canvas = Canvas(image.width, image.height)
@@ -212,45 +207,37 @@ def _canvas_image_color_no_bg(image: Image) -> str:
         chars.append("\033[0m\n")
 
     return "".join(chars)
-    #
-    #     print("\033[0m")
-    #
-    # print(len(result_text), len(cell_colors))
-    #
-    # # Resample the image to the size of the canvas
-    # # image_color = image.reduce((BRAILLE_COLS, BRAILLE_ROWS))
-    # # image_color.save("image_color.png")
-    # print(f"Color image size: {image_color.width}x{image_color.height}")
-    #
-    # image.save("test_dithered_merged.png")
-    # print(f"Image dimensions: {image.width}x{image.height}")
-    # print(f"Terminal dimensions: {shutil.get_terminal_size()}")
-    # exit()
-    #
-    # canvas = Canvas(image.width, image.height)
-    # canvas.draw_image(
-    #     image.filter(ImageFilter.EDGE_ENHANCE_MORE).filter(ImageFilter.EDGE_ENHANCE_MORE)
-    # )
-    # result_text = str(canvas)
-    # chars = []
-    # for y, line in enumerate(result_text.splitlines(keepends=False)):
-    #     for x, ch in enumerate(line):
-    #
-    #         if x >= image_bg.width or y >= image_bg.height:
-    #             bg_r, bg_g, bg_b = (0, 0, 0)
-    #         else:
-    #             bg_r, bg_g, bg_b = image_bg.getpixel((x, y))
-    #
-    #         if x >= image.width * BRAILLE_ROWS or y >= image_bg.height * BRAILLE_COLS:
-    #             fg_r, fg_g, fg_b = (0, 0, 0)
-    #         else:
-    #             fg_r, fg_g, fg_b = image.getpixel((x * BRAILLE_COLS, y * BRAILLE_ROWS))
-    #
-    #         code_bg = f"48;2;{bg_r};{bg_g};{bg_b}"
-    #         code_fg = f"38;2;{fg_r};{fg_g};{fg_b}"
-    #         chars.append(f"\033[{code_bg};{code_fg}m{ch}")
-    #     # Reset style and add a newline
-    #     chars.append("\033[0m\n")
-    #
-    # # Return the result without the last newline, but with the last reset style
-    # return "".join(chars[:-1]) + "\033[0m"
+
+
+def _canvas_image_color_bg(image: Image) -> str:
+    """Draw an image as color to a canvas and return the result as a string."""
+
+    image_color = image.reduce((BRAILLE_COLS, BRAILLE_ROWS))
+    image = image.filter(ImageFilter.EDGE_ENHANCE_MORE)
+    # Lighten the image
+    cell_colors = list(image_color.getdata())
+
+    canvas = Canvas(image.width, image.height)
+    canvas.draw_image(image)
+    result_text = canvas.get_str()
+
+    chars = []
+    color_lines = [
+        cell_colors[i : (i + math.ceil(image.width / BRAILLE_COLS))]
+        for i in range(0, len(cell_colors), math.ceil(image.width / BRAILLE_COLS))
+    ]
+    for line, color_line in zip(result_text.splitlines(keepends=False), color_lines):
+        for ch, color in zip(line, color_line):
+            r, g, b = color
+
+            # Desaturated and darkened color for bg
+            r_bg = int(r * 0.3)
+            g_bg = int(g * 0.3)
+            b_bg = int(b * 0.3)
+            code_bg = f"48;2;{r_bg};{g_bg};{b_bg}"
+            code = f"38;2;{r};{g};{b}"
+            chars.append(f"\033[{code};{code_bg}m{ch}")
+        # Reset style and add a newline
+        chars.append("\033[0m\n")
+
+    return "".join(chars)

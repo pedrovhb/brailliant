@@ -1,24 +1,23 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 import atexit
 import math
 import random
 import shutil
-import sys
 import textwrap
 from abc import ABC
 from collections import deque
 from itertools import chain, pairwise
 
 import pymunk
-from astream.event_like import Pulse
 from astream.on_time import OnTime
 from pymunk import Vec2d
 
 from brailliant.canvas import Canvas
 from examples.android_sensors import get_sensor_output
-from examples.async_chars import async_getch
+from asynkets import async_getch, PeriodicPulse
 
 err = deque(maxlen=20)
 
@@ -28,9 +27,10 @@ UI_W = 10
 UI_W_PADDING = 3
 CANVAS_W, CANVAS_H = w * 2 - 1, h
 
-# SIM_SCALE = 0.5
+
 SIM_SCALE = 1
 SHAPE_ELASTICITY = 0.97
+MAX_G = 499
 
 
 class PhysObj(ABC):
@@ -180,15 +180,6 @@ def get_space():
         (CANVAS_W + wall_radius, CANVAS_H),
         wall_radius,
     )
-
-    # left_wall = pymunk.Segment(space.static_body, (0, 0), (0, CANVAS_H), 1)
-    # top_wall = pymunk.Segment(space.static_body, (0, 0), (CANVAS_W, 0), 1)
-    # bottom_wall = pymunk.Segment(
-    #     space.static_body,
-    #     (0, CANVAS_H),
-    #     (CANVAS_W, CANVAS_H),
-    #     1,
-    # )
     left_wall = pymunk.Segment(
         space.static_body,
         (-wall_radius, 0),
@@ -214,6 +205,7 @@ def get_space():
     bottom_wall.elasticity = 1.0
     space.add(left_wall, right_wall, top_wall, bottom_wall)  # Add the walls to the Pymunk space
 
+    # Wall in the middle just for show
     mid_wall = pymunk.Segment(
         space.static_body,
         (round(CANVAS_W / 2), 0),
@@ -289,7 +281,6 @@ def raycast(
     if ignored_shapes is None:
         ignored_shapes = []
 
-    # light_end = light_start + Vec2d(light_length, 0).rotated_degrees(light_angle)
     seg_query = space.segment_query(
         (light_start.x, light_start.y),
         (light_end.x, light_end.y),
@@ -334,13 +325,13 @@ def raycast(
         )
 
 
-async def show_balls() -> None:
+async def show_balls(android_sensors: bool = False) -> None:
     """Create the canvas and show our balls."""
 
     initialization = [
+        "\033[2J",  # Jettison the screen contents
+        "\033[s",  # Save the cursor position
         "\x1b[?25l",  # Hide the cursor
-        "\x1b[2J",  # Clear the screen
-        "\x1b[H",  # Move the cursor to the top left
     ]
     print("".join(initialization), end="", flush=True)
 
@@ -363,18 +354,13 @@ async def show_balls() -> None:
     time_on = True
     lasers_bounce_on = False
     lasers_on = False
-    MAX_G = 499
     gravy = Vec2d(0, -98.1)
     space.gravity = gravy
-    time_step_pulse = Pulse()
-    time_step_pulse_back = Pulse()
 
     async def process_inputs() -> None:
         nonlocal time_on, gravy_on, gravy, lasers_on, lasers_bounce_on
 
         async for ch in async_getch():
-
-            print(ch)
 
             # Toggle gravity on g
             if ch.lower() == b"g":
@@ -388,12 +374,6 @@ async def show_balls() -> None:
             # Toggle time on t
             elif ch.lower() == b"t":
                 time_on = not time_on
-
-            elif ch.lower() == b"x":
-                time_step_pulse.fire()
-
-            elif ch.lower() == b"z":
-                time_step_pulse_back.fire()
 
             elif ch.lower() == b"l":
                 lasers_on = not lasers_on
@@ -434,19 +414,10 @@ async def show_balls() -> None:
             for i in range(-30, 31)
         )
 
-        # copy.write_text(10, copy.height - 30, str(space.current_time_step))
-
         for ray_start, ray_end in rays:
             copy.draw_line(*map(int, (ray_start.x, ray_start.y, ray_end.x, ray_end.y)))
 
-    async def draw():
-        """Draw the current state of the simulation."""
-        copy = canvas.copy()
-
-        for o in objs:
-            copy = o.draw(copy)
-        if lasers_on:
-            draw_light(copy)
+    def get_ui_str():
 
         fps = 1 / dt
         stats = [
@@ -466,7 +437,10 @@ async def show_balls() -> None:
             "b: toggle laz0r bounce",
         ]
 
-        ui = "\n".join(
+        # Draw the UI (stats and keys). It's joined by newlines and the control
+        # characters for clearing a line; this is so that the UI is always
+        # redrawn (and e.g. updating FPS from 100 to 99 doesn't leave a ghost 1)
+        ui = f"\n\x1b[2K".join(
             [
                 *stats,
                 "",
@@ -474,69 +448,77 @@ async def show_balls() -> None:
             ]
         )
         ui = textwrap.indent(ui, " " * UI_W_PADDING)
+        return ui
+
+    async def draw():
+        """Draw the current state of the simulation."""
+        copy = canvas.copy()
+
+        for o in objs:
+            copy = o.draw(copy)
+        if lasers_on:
+            draw_light(copy)
+        ui = get_ui_str()
+
         s = "".join(
             (
-                "\033[J",  # Clear screen
                 "\033[0;0H",  # Move cursor to top left
-                copy.get_str_control_chars(),  # Draw the canvas
+                copy.get_str(),  # Draw the canvas
                 "\n\n",  # Move cursor down
                 ui,  # Draw the UI
             )
         )
+
         print(s, end="", flush=True)
 
-    async def gravity_from_sensors() -> None:
-        while True:
-            async for x, y, z in get_sensor_output():
-                space.gravity = Vec2d(x, y) * -20
-                if space.gravity.length > MAX_G:
-                    space.gravity = space.gravity.normalized() * MAX_G
+    async def android_sensors_update_gravity() -> None:
+        async for x, y, z in get_sensor_output():
+            space.gravity = Vec2d(x, y) * -20
+            if space.gravity.length > MAX_G:
+                space.gravity = space.gravity.normalized() * MAX_G
 
-    if mode == "android":
-        space.damping = 0.98
-        asyncio.create_task(gravity_from_sensors())
     asyncio.create_task(process_inputs())
 
-    # physics_updater.run_periodically(update_state)
+    async def update_physics():
+        nonlocal t, dt, gravy
+        prev_t = t
+        t = loop.time()
+        dt = t - prev_t
+        if time_on:
+            space.step(dt)
 
-    async def physics_updater() -> None:
-        physics_timer = OnTime(1 / RATE)
+    drawer = PeriodicPulse(1 / RATE)
 
-        async def _update_time():
-            nonlocal t, dt, gravy
-            while True:
-                await physics_timer
-                prev_t = t
-                t = loop.time()
-                dt = t - prev_t
-                if time_on:
-                    space.step(dt)
+    if android_sensors:
+        space.damping = 0.98
+        drawer.add_pulse_callback(android_sensors_update_gravity)
 
-        async def _update_time_step_fwd():
-            nonlocal time_step
-            while True:
-                await time_step_pulse
-                space.step(time_step)
-
-        async def _update_time_step_bwd():
-            nonlocal time_step
-            while True:
-                await time_step_pulse_back
-                space.step(-time_step)
-
-        await asyncio.gather(_update_time(), _update_time_step_fwd(), _update_time_step_bwd())
-
-    asyncio.create_task(physics_updater())
-
-    drawer = OnTime(1 / RATE)
-    drawer.run_periodically(draw)
+    drawer.add_pulse_callback(draw)
+    drawer.add_pulse_callback(update_physics)
 
     while True:
         await asyncio.sleep(10)
 
 
 if __name__ == "__main__":
-    mode = "android" if len(sys.argv) > 1 and sys.argv[1] == "--android" else "pc"
-    RATE = int(sys.argv[2]) if len(sys.argv) > 2 else 60  # 120 Hz looks great on my monitor :)
 
-    asyncio.run(show_balls())
+    parser = argparse.ArgumentParser(
+        "Physics simulator",
+        description="Simulate physics with pymunk and brailliant.",
+    )
+    parser.add_argument(
+        "--android",
+        action="store_true",
+        help="Run in android mode (uses Termux API to get sensor data for gravity)",
+    )
+    parser.add_argument(
+        "--rate",
+        type=int,
+        default=120,
+        help="Physics and screen refresh rate",
+    )
+
+    args = parser.parse_args()
+    RATE = args.rate
+
+    asyncio.run(show_balls(android_sensors=args.android))

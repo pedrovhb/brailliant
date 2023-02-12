@@ -72,6 +72,18 @@ optional = false
 python-versions = ">=3.6"
 
 [[package]]
+name = "asynkets"
+version = "0.1.2"
+description = ""
+category = "main"
+optional = false
+python-versions = ">=3.8,<4.0"
+
+[package.dependencies]
+setuptools = ">=65.6.3,<66.0.0"
+wheel = ">=0.38.4,<0.39.0"
+
+[[package]]
 name = "attrs"
 version = "22.2.0"
 description = "Classes Without Boilerplate"
@@ -595,6 +607,19 @@ rich = ">=10.7.0"
 wheel = ">=0.36.1"
 
 [[package]]
+name = "setuptools"
+version = "65.7.0"
+description = "Easily download, build, install, upgrade, and uninstall Python packages"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+
+[package.extras]
+docs = ["furo", "jaraco.packaging (>=9)", "jaraco.tidelift (>=1.4)", "pygments-github-lexers (==0.0.5)", "rst.linker (>=1.9)", "sphinx (>=3.5)", "sphinx-favicon", "sphinx-hoverxref (<2)", "sphinx-inline-tabs", "sphinx-lint", "sphinx-notfound-page (==0.8.3)", "sphinx-reredirects", "sphinxcontrib-towncrier"]
+testing = ["build[virtualenv]", "filelock (>=3.4.0)", "flake8 (<5)", "flake8-2020", "ini2toml[lite] (>=0.9)", "jaraco.envs (>=2.2)", "jaraco.path (>=3.2.0)", "pip (>=19.1)", "pip-run (>=8.8)", "pytest (>=6)", "pytest-black (>=0.3.7)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=1.3)", "pytest-flake8", "pytest-mypy (>=0.9.1)", "pytest-perf", "pytest-timeout", "pytest-xdist", "tomli-w (>=1.0.0)", "virtualenv (>=13.0.0)", "wheel"]
+testing-integration = ["build[virtualenv]", "filelock (>=3.4.0)", "jaraco.envs (>=2.2)", "jaraco.path (>=3.2.0)", "pytest", "pytest-enabler", "pytest-xdist", "tomli", "virtualenv (>=13.0.0)", "wheel"]
+
+[[package]]
 name = "six"
 version = "1.16.0"
 description = "Python 2 and 3 compatibility utilities"
@@ -658,7 +683,7 @@ python-versions = "*"
 name = "wheel"
 version = "0.38.4"
 description = "A built-package format for Python"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.7"
 
@@ -691,7 +716,7 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.10"
-content-hash = "5ed04ae2c79f621d92c28c9613a5a00e4a42180e2065ebb368c46b420125adaa"
+content-hash = "eb3ddf5e16715f1ce1fea99d5b2b47ddef9dd883c1116a1958daa57da2778bcd"
 
 [metadata.files]
 aiohttp = [
@@ -802,6 +827,10 @@ asttokens = [
 async-timeout = [
     {file = "async-timeout-4.0.2.tar.gz", hash = "sha256:2163e1640ddb52b7a8c80d0a67a08587e5d245cc9c553a74a847056bc2976b15"},
     {file = "async_timeout-4.0.2-py3-none-any.whl", hash = "sha256:8ca1e4fcf50d07413d66d1a5e416e42cfdf5851c981d679a09851a6853383b3c"},
+]
+asynkets = [
+    {file = "asynkets-0.1.2-py3-none-any.whl", hash = "sha256:c05f7b165c41fb42b8cadfd120f11589d05b26e59f49d4403952130abcaeb4d8"},
+    {file = "asynkets-0.1.2.tar.gz", hash = "sha256:9b2e393af72f84d1ceb958538bf420ccda6e5eb7100d4acfc34fca346795993f"},
 ]
 attrs = [
     {file = "attrs-22.2.0-py3-none-any.whl", hash = "sha256:29e95c7f6778868dbd49170f98f8818f78f3dc5e0e37c0b1f474e3561b240836"},
@@ -1381,6 +1410,10 @@ scalene = [
     {file = "scalene-1.5.16-cp39-cp39-manylinux_2_24_x86_64.whl", hash = "sha256:4b8da9edba2400a6ce1a8daada03fd9f310963a4c04f59d3e7c520e0103a3a9b"},
     {file = "scalene-1.5.16-cp39-cp39-win_amd64.whl", hash = "sha256:bc0bd7f9111c8a66f9b83fc362f8e610693181e9de28bdc42efc3a249db588e2"},
     {file = "scalene-1.5.16.tar.gz", hash = "sha256:2b09aa9b3c5e59c87a08db38771cb75fc0b4c504e93b4be2203f01177ca054b0"},
+]
+setuptools = [
+    {file = "setuptools-65.7.0-py3-none-any.whl", hash = "sha256:8ab4f1dbf2b4a65f7eec5ad0c620e84c34111a68d3349833494b9088212214dd"},
+    {file = "setuptools-65.7.0.tar.gz", hash = "sha256:4d3c92fac8f1118bb77a22181355e29c239cabfe2b9effdaa665c66b711136d7"},
 ]
 six = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
