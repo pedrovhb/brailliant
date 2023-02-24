@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import atexit
+import math
 import mimetypes
 import shutil
 import signal
@@ -10,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from pathlib import Path
 
-from asynkets import PeriodicPulse
+from asynkets import PeriodicPulse, async_getch
 
 from brailliant import sparkline
 from brailliant.base import BRAILLE_COLS, BRAILLE_ROWS
@@ -21,6 +22,7 @@ from brailliant.cli_utils import (
     InvalidVideoError,
     scroll_down,
     scroll_up,
+    setup_terminal,
 )
 
 try:
@@ -157,9 +159,7 @@ def display_braille_media() -> None:
         )
     elif media_type == "video":
         if not shutil.which("ffmpeg"):
-            print(
-                "Video display requires ffmpeg and ffprobe to be installed and on the PATH."
-            )
+            print("Video display requires ffmpeg and ffprobe to be installed and on the PATH.")
             sys.exit(1)
 
         coro = display_video(
@@ -174,9 +174,7 @@ def display_braille_media() -> None:
         try:
             asyncio.run(coro)
         except InvalidVideoError:
-            print(
-                f"Unable to determine format for file '{args.input}'.", file=sys.stderr
-            )
+            print(f"Unable to determine format for file '{args.input}'.", file=sys.stderr)
             sys.exit(1)
     else:
         print("Unknown media type", file=sys.stderr)
@@ -207,12 +205,21 @@ def display_image(
         color=color,
         invert=invert,
     )
-    print(result_text)
+    height = result_text.count("\n")
+    setup_terminal(height)
+    print(result_text, end="")
 
 
-async def _show_frames(fps: float, frame_queue: asyncio.Queue) -> None:
+async def _show_frames(
+    fps: float,
+    frame_queue: asyncio.Queue,
+    playing_event: asyncio.Event,
+    video_duration: float | None = None,
+) -> None:
     """Show frames from the frame queue to the terminal at the specified framerate."""
-    periodic_pulse = PeriodicPulse(1 / fps)
+    frame_delta = 1 / fps
+    current_frame = 0
+    periodic_pulse = PeriodicPulse(frame_delta)
     try:
         while True:
             new_frame_fut = await frame_queue.get()
@@ -221,11 +228,24 @@ async def _show_frames(fps: float, frame_queue: asyncio.Queue) -> None:
                 break
 
             new_frame = await new_frame_fut
+            current_frame += 1
 
             await periodic_pulse
-            sys.stdout.buffer.write(new_frame.encode().strip() + b"\033[u")
+            crt_time = current_frame * frame_delta
+            h, m, s = crt_time // 3600, crt_time // 60 % 60, crt_time % 60
+
+            if playing_event.is_set():
+                # todo - make this prettier with color, braille, and total duration
+                # todo (maybe) - handle reversing, make a progress bar, etc.
+                state = f"[ PLAYING ⏵   {h:02.0f}:{m:02.0f}:{s:06.3f} ]"
+            else:
+                state = f"[  PAUSED ⏸   {h:02.0f}:{m:02.0f}:{s:06.3f} ]"
+            new_frame: str
+            sys.stdout.buffer.write(new_frame.encode().strip() + f"\n{state}\033[u".encode())
             sys.stdout.buffer.flush()
             frame_queue.task_done()
+
+            await playing_event.wait()
 
     except asyncio.CancelledError:
         pass
@@ -272,6 +292,23 @@ async def process_frames(
         process_pool.shutdown(cancel_futures=True)
 
 
+async def capture_keys(playing_event: asyncio.Event) -> None:
+    """Capture play/pause keys and set the playing event accordingly."""
+    try:
+        async for ch in async_getch():
+            if ch.lower().strip() in (b"", b"p"):
+                if playing_event.is_set():
+                    playing_event.clear()
+                else:
+                    playing_event.set()
+
+            elif ch.lower().strip() in (b"q", b"\x03"):
+                break
+
+    except asyncio.CancelledError:
+        pass
+
+
 async def display_video(
     file: Path,
     size: tuple[int, int],
@@ -281,6 +318,11 @@ async def display_video(
     fps: float,
     invert: bool,
 ) -> None:
+
+    playing_event = asyncio.Event()
+    playing_event.set()
+    exit_future = asyncio.Future()
+
     log = partial(print, file=sys.stderr) if verbose else lambda message: None
 
     log(f"Loading video {file}")
@@ -304,24 +346,17 @@ async def display_video(
         keep_ratio=keep_ratio,
     )
 
-    # Scroll down enough that the video will be displayed entirely
-    vertical_lines = height // BRAILLE_ROWS
-
-    # Scroll down enough that the video will be displayed entirely
-    scroll_down(vertical_lines)
-    scroll_up(vertical_lines)
-    sys.stdout.write("\033[s")
-
-    # Scroll down on exit so that transient output doesn't interfere with future usage of
-    # the terminal
-    atexit.register(sys.stdout.write, "\033[u" + "\n" * (vertical_lines + 1))
-
-    # Hide cursor (but enable at exit)
-    sys.stdout.write("\033[?25l")
-    atexit.register(sys.stdout.write, "\033[?25h")
-
+    setup_terminal(math.ceil(height / BRAILLE_ROWS) + 1)
     show_frames_task = asyncio.create_task(
-        _show_frames(fps=fps, frame_queue=frame_queue)
+        _show_frames(
+            fps=fps,
+            frame_queue=frame_queue,
+            playing_event=playing_event,
+        )
+    )
+    capture_play_pause_keys_task = asyncio.create_task(capture_keys(playing_event=playing_event))
+    capture_play_pause_keys_task.add_done_callback(
+        lambda _: exit_future.set_result(None) if not exit_future.done() else None
     )
 
     log(f"Converting video to braille with size {width}x{height}")
@@ -337,13 +372,21 @@ async def display_video(
         )
     )
 
-    def cancel_tasks():
+    async def cancel_tasks():
+        await exit_future
         process_frames_task.cancel()
         show_frames_task.cancel()
+        capture_play_pause_keys_task.cancel()
 
-    loop.add_signal_handler(signal.SIGINT, cancel_tasks)
+    cancel_tasks_task = asyncio.create_task(cancel_tasks())
 
+    loop.add_signal_handler(
+        signal.SIGINT, lambda: exit_future.set_result(None) if not exit_future.done() else None
+    )
     await show_frames_task
+    if not exit_future.done():
+        exit_future.set_result(None)
+    await cancel_tasks_task
 
 
 def display_sparkline():

@@ -1,3 +1,10 @@
+"""An example usage of brailliant to draw a physics simulation with l4z0rs powered by Pymunk.
+
+Mind that this isn't particularly well-organized or optimized code; it was developed with
+the library and things were moving around a lot. It's still really cool, though.
+"""
+
+
 from __future__ import annotations
 
 import argparse
@@ -6,6 +13,8 @@ import atexit
 import math
 import random
 import shutil
+import signal
+import sys
 import textwrap
 from abc import ABC
 from collections import deque
@@ -14,7 +23,9 @@ from itertools import chain, pairwise, zip_longest
 import pymunk
 from asynkets import async_getch, PeriodicPulse
 
+from brailliant import BRAILLE_ROWS
 from brailliant.canvas import Canvas
+from brailliant.cli_utils import scroll_up, scroll_down, setup_terminal
 from examples.android_sensors import get_sensor_output
 from pymunk import Vec2d
 
@@ -24,7 +35,7 @@ w, h = shutil.get_terminal_size()
 
 UI_W = 10
 UI_W_PADDING = 3
-CANVAS_W, CANVAS_H = w * 2, h - h % 4
+CANVAS_W, CANVAS_H = w * 2, h - h % 8
 
 
 SIM_SCALE = 1
@@ -98,9 +109,7 @@ class Rectangle(PhysObj):
         self.body.velocity = vx, vy
         self.body.center_of_gravity = (width / 2, height / 2)
         self.body.angular_velocity = 4
-        self.shape = pymunk.Poly(
-            self.body, [(0, 0), (width, 0), (width, height), (0, height)]
-        )
+        self.shape = pymunk.Poly(self.body, [(0, 0), (width, 0), (width, height), (0, height)])
         self.body.moment = pymunk.moment_for_poly(mass, self.shape.get_vertices())
         self.shape.elasticity = SHAPE_ELASTICITY
 
@@ -203,9 +212,7 @@ def get_space():
     right_wall.elasticity = 1.0
     top_wall.elasticity = 1.0
     bottom_wall.elasticity = 1.0
-    space.add(
-        left_wall, right_wall, top_wall, bottom_wall
-    )  # Add the walls to the Pymunk space
+    space.add(left_wall, right_wall, top_wall, bottom_wall)  # Add the walls to the Pymunk space
 
     # Wall in the middle just for show
     mid_wall = pymunk.Segment(
@@ -330,15 +337,7 @@ def raycast(
 async def show_balls(android_sensors: bool = False) -> None:
     """Create the canvas and show our balls."""
 
-    initialization = [
-        "\033[2J",  # Jettison the screen contents
-        "\033[s",  # Save the cursor position
-        "\x1b[?25l",  # Hide the cursor
-    ]
-    print("".join(initialization), end="", flush=True)
-
-    # Show the cursor on exit
-    atexit.register(print, "\x1b[?25h")
+    setup_terminal(CANVAS_H // BRAILLE_ROWS + 8)  # fit the UI and canvas
 
     canvas = Canvas(CANVAS_W, CANVAS_H)
     canvas.draw_rectangle(0, 0, CANVAS_W - 1, CANVAS_H - 1)
@@ -460,7 +459,7 @@ async def show_balls(android_sensors: bool = False) -> None:
 
         s = "".join(
             (
-                "\033[0;0H",  # Move cursor to top left
+                "\033[u",  # Restore the cursor position
                 copy.get_str(),  # Draw the canvas
                 "\n\n",  # Move cursor down
                 ui,  # Draw the UI
@@ -494,8 +493,15 @@ async def show_balls(android_sensors: bool = False) -> None:
     drawer.add_pulse_callback(draw)
     drawer.add_pulse_callback(update_physics)
 
-    while True:
-        await asyncio.sleep(10)
+    exit_fut = loop.create_future()
+
+    # SIGTERM vs SIGINT - SIGTERM is sent by the OS when the process is killed
+    # (e.g. with `kill`), while SIGINT is sent by the user (e.g. with Ctrl+C).
+    asyncio.get_event_loop().add_signal_handler(signal.SIGTERM, exit_fut.set_result, None)
+    asyncio.get_event_loop().add_signal_handler(signal.SIGINT, exit_fut.set_result, None)
+
+    await exit_fut
+    drawer.close()
 
 
 if __name__ == "__main__":

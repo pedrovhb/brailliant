@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import math
 import re
 import sys
@@ -29,6 +30,24 @@ def scroll_down(lines: int) -> None:
     for i in range(lines):
         sys.stdout.buffer.write(b"\033D")
         sys.stdout.flush()
+
+
+def setup_terminal(lines_buffer: int) -> None:
+
+    # Scroll down enough that the video will be displayed entirely
+    scroll_down(lines_buffer)
+    scroll_up(lines_buffer)
+
+    # Save the cursor position and hide it
+    sys.stdout.write("\033[s\x1b[?25l")
+    sys.stdout.flush()
+
+    def teardown() -> None:
+        # Restore the cursor position, show it, and scroll down on exit so
+        # that transient output doesn't interfere with future usage of the terminal
+        sys.stdout.write("\033[u\033[?25h" + "\n" * lines_buffer)
+
+    atexit.register(teardown)
 
 
 async def create_ffmpeg_process(
@@ -160,7 +179,7 @@ def image_to_braille(
     invert: bool = False,
 ) -> str:
     """Helper function for the CLI tool to display an image in either color or monochrome."""
-
+    image = image.convert("RGB")
     if resize is not None:
         if keep_ratio:
             # PIL.Image.thumbnail() will resize the image to fit within the given dimensions
@@ -196,9 +215,7 @@ def _canvas_image_color_with_bg(image: Image, invert: bool = False) -> str:
     """Draw an image as color to a canvas and return the result as a string."""
     image_bg = image.reduce((BRAILLE_COLS, BRAILLE_ROWS))
     canvas = Canvas(image.width, image.height).draw_image(
-        image.filter(ImageFilter.EDGE_ENHANCE_MORE).filter(
-            ImageFilter.EDGE_ENHANCE_MORE
-        )
+        image.filter(ImageFilter.EDGE_ENHANCE_MORE).filter(ImageFilter.EDGE_ENHANCE_MORE)
     )
     if invert:
         canvas.invert()

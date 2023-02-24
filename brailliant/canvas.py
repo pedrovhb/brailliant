@@ -150,32 +150,6 @@ def _draw_arrow(
     )
 
 
-def _draw_image(image: str | Path | "Image") -> Iterator[tuple[int, int]]:
-    try:
-        from PIL.Image import Dither, Image, open as open_image
-    except ImportError as e:
-        raise ImportError(
-            "ImportError while trying to import Pillow."
-            "\nImage loading requires the Pillow library to be installed:"
-            "\n    pip install Pillow"
-        ) from e
-
-    if isinstance(image, (str, Path)):
-        image = open_image(image)
-
-    image = image.convert("1", dither=Dither.FLOYDSTEINBERG)
-    im_height = image.height
-    im_width = image.width
-    canvas = bitarray().frombytes(image.tobytes())
-
-    # todo - there's definitely a more efficient way to do this
-    for i, point in enumerate(image.getdata()):
-        y, x = divmod(i, im_width)
-        y = im_height - y
-        if point:
-            yield x, y
-
-
 class TextAlign(str, Enum):
     LEFT = "left"
     RIGHT = "right"
@@ -247,9 +221,7 @@ def get_char(grid: bitarray, x: int, y: int, w: int) -> bitarray:
 class Canvas:
     __slots__ = ("width_chars", "height_chars", "_canvas", "width", "height", "_text")
 
-    def __init__(
-        self, width_dots: int, height_dots: int, contents: bitarray | None = None
-    ) -> None:
+    def __init__(self, width_dots: int, height_dots: int, contents: bitarray | None = None) -> None:
         # todo - width/height are being rounded with little indication that they are,
         #  which could be confusing. This simplifies things a lot though, so perhaps
         #  the solution is to just hide away this detail (or have it be well documented)
@@ -310,9 +282,7 @@ class Canvas:
             lines.append(b"".join(line.decode(braille_table_bitarray)).decode("utf-8"))
 
         # Add text
-        text_lines = itertools.chain.from_iterable(
-            txt.in_split_lines() for txt in self._text
-        )
+        text_lines = itertools.chain.from_iterable(txt.in_split_lines() for txt in self._text)
         for text in text_lines:
             char_length = len(text.text)
             char_y = round(text.y / BRAILLE_ROWS)
@@ -339,9 +309,7 @@ class Canvas:
 
             txt_start = char_x
             txt_end = char_x + char_length
-            lines[char_y] = "".join(
-                (lines[char_y][:txt_start], txt, lines[char_y][txt_end:])
-            )
+            lines[char_y] = "".join((lines[char_y][:txt_start], txt, lines[char_y][txt_end:]))
 
         return "\n".join(lines)
 
