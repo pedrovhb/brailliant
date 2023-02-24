@@ -122,7 +122,9 @@ coords_braille_mapping = {
 # (1, 2) 21     ⢰
 # (1, 3) 85     ⢸
 coords_braille_mapping_filled = {
-    (x, y): reduce(operator.or_, [coords_braille_mapping[(x, yy)] for yy in range(y + 1)], 0)
+    (x, y): reduce(
+        operator.or_, [coords_braille_mapping[(x, yy)] for yy in range(y + 1)], 0
+    )
     for x in range(2)
     for y in range(4)
 }

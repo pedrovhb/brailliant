@@ -4,20 +4,17 @@ import asyncio
 import atexit
 import math
 import random
-
 import sys
 from abc import ABC
 from collections import deque
 from itertools import pairwise
 
 import pymunk
-
 from astream.on_time import OnTime
+from asynkets import async_getch
 
 from brailliant.canvas import Canvas
-
 from examples.android_sensors import get_sensor_output
-from examples.async_chars import async_getch
 from pymunk import Vec2d
 
 err = deque(maxlen=20)
@@ -43,7 +40,6 @@ class Ball(PhysObj):
         radius: float,
         mass: float | None = None,
     ) -> None:
-
         x, y = x * SIM_SCALE, y * SIM_SCALE
         vx, vy = vx * SIM_SCALE, vy * SIM_SCALE
         radius *= SIM_SCALE
@@ -99,7 +95,9 @@ class Rectangle(PhysObj):
         self.body.velocity = vx, vy
         self.body.center_of_gravity = (width / 2, height / 2)
         self.body.angular_velocity = 4
-        self.shape = pymunk.Poly(self.body, [(0, 0), (width, 0), (width, height), (0, height)])
+        self.shape = pymunk.Poly(
+            self.body, [(0, 0), (width, 0), (width, height), (0, height)]
+        )
         self.body.moment = pymunk.moment_for_poly(mass, self.shape.get_vertices())
         self.shape.elasticity = SHAPE_ELASTICITY
 
@@ -197,7 +195,9 @@ def get_space():
     right_wall.elasticity = 1.0
     top_wall.elasticity = 1.0
     bottom_wall.elasticity = 1.0
-    space.add(left_wall, right_wall, top_wall, bottom_wall)  # Add the walls to the Pymunk space
+    space.add(
+        left_wall, right_wall, top_wall, bottom_wall
+    )  # Add the walls to the Pymunk space
 
     mid_wall = pymunk.Segment(
         space.static_body,
@@ -299,7 +299,6 @@ async def show_balls() -> None:
         nonlocal time_on, gravy_on, gravy
 
         async for ch in async_getch():
-
             # Toggle gravity on g
             if ch.lower() == b"g":
                 gravy_on = not gravy_on
@@ -400,6 +399,8 @@ async def show_balls() -> None:
 
 if __name__ == "__main__":
     mode = "android" if len(sys.argv) > 1 and sys.argv[1] == "--android" else "pc"
-    RATE = int(sys.argv[2]) if len(sys.argv) > 2 else 60  # 120 Hz looks great on my monitor :)
+    RATE = (
+        int(sys.argv[2]) if len(sys.argv) > 2 else 60
+    )  # 120 Hz looks great on my monitor :)
 
     asyncio.run(show_balls())

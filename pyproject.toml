@@ -24,7 +24,8 @@ python = "^3.10"
 bitstring = "^4.0.1"
 exceptiongroup = "^1.1.0"
 rich = "^13.3.1"
-asynkets = "0.1.2"
+asynkets = "0.1.4"
+bitarray = "^2.7.3"
 
 
 [tool.poetry.group.examples.dependencies]
@@ -36,18 +37,18 @@ astream = "0.7.3"
 pillow = "^9.3.0"
 
 [tool.poetry.scripts]
-brailliant = "brailliant.cli:display_braille_image"
-bimg = "brailliant.cli:display_braille_image"
-bbin = "brailliant.cli:display_braille_repr"
+brailliant = "brailliant.cli:display_braille_media"
+br = "brailliant.cli:display_braille_media"
 bspark = "brailliant.cli:display_sparkline"
 
 
 [tool.poetry.group.dev.dependencies]
 scalene = "^1.5.16"
 mypy = "^0.991"
-black = {extras = ["d"], version = "^22.12.0"}
+black = {extras = ["d"], version = "^23.1.0"}
 pytest = "^7.2.1"
 ipython = "^8.10.0"
+usort = "^1.0.5"
 
 [build-system]
 requires = ["poetry-core"]

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import atexit
 import time
-from statistics import harmonic_mean
 
 from brailliant.canvas import Canvas
 
@@ -59,7 +58,6 @@ class Ball:
 
 
 def show_balls() -> None:
-
     initialization = [
         "\x1b[?25l",  # Hide the cursor
         "\x1b[2J",  # Clear the screen
@@ -82,7 +80,6 @@ def show_balls() -> None:
     dt = 1
     prev_t = t
     while True:
-
         dt = t - prev_t
         prev_t = t
         t = time.perf_counter()

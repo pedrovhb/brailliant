@@ -2,10 +2,7 @@ import itertools
 import math
 from typing import Iterable
 
-from brailliant import (
-    braille_table_str,
-    coords_braille_mapping,
-)
+from brailliant import braille_table_str, coords_braille_mapping
 
 
 def get_sparkbar(

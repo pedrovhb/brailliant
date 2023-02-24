@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import functools
 import itertools
 import math
 import operator
@@ -9,13 +8,9 @@ from functools import partialmethod
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Literal, overload, Tuple, TYPE_CHECKING
 
-from brailliant import (
-    BRAILLE_COLS,
-    BRAILLE_RANGE_START,
-    BRAILLE_ROWS,
-    braille_table_str,
-    coords_braille_mapping,
-)
+from bitarray import bitarray
+
+from brailliant import BRAILLE_COLS, BRAILLE_RANGE_START, BRAILLE_ROWS
 
 if TYPE_CHECKING:
     try:
@@ -128,7 +123,6 @@ def _draw_triangle(vertices: Iterable[tuple[int, int]]) -> Iterable[tuple[int, i
 def _draw_arrow(
     start: Tuple[int, int], end_or_angle: Tuple[int, int] | float, size: int
 ) -> Iterable[Tuple[int, int]]:
-
     if isinstance(end_or_angle, (float, int)):
         end = (
             start[0] + int(size * math.cos(math.radians(end_or_angle))),
@@ -172,6 +166,8 @@ def _draw_image(image: str | Path | "Image") -> Iterator[tuple[int, int]]:
     image = image.convert("1", dither=Dither.FLOYDSTEINBERG)
     im_height = image.height
     im_width = image.width
+    canvas = bitarray().frombytes(image.tobytes())
+
     # todo - there's definitely a more efficient way to do this
     for i, point in enumerate(image.getdata()):
         y, x = divmod(i, im_width)
@@ -216,18 +212,61 @@ class CanvasText:
         return f"CanvasText({self.text!r}, {self.x}, {self.y})"
 
 
-class Canvas:
+braille_table_bitarray = {
+    c.encode(): bitarray(format(i, "08b"))
+    for i, c in enumerate(
+        "⠀⢀⡀⣀⠠⢠⡠⣠⠄⢄⡄⣄⠤⢤⡤⣤"
+        "⠐⢐⡐⣐⠰⢰⡰⣰⠔⢔⡔⣔⠴⢴⡴⣴"
+        "⠂⢂⡂⣂⠢⢢⡢⣢⠆⢆⡆⣆⠦⢦⡦⣦"
+        "⠒⢒⡒⣒⠲⢲⡲⣲⠖⢖⡖⣖⠶⢶⡶⣶"
+        "⠈⢈⡈⣈⠨⢨⡨⣨⠌⢌⡌⣌⠬⢬⡬⣬"
+        "⠘⢘⡘⣘⠸⢸⡸⣸⠜⢜⡜⣜⠼⢼⡼⣼"
+        "⠊⢊⡊⣊⠪⢪⡪⣪⠎⢎⡎⣎⠮⢮⡮⣮"
+        "⠚⢚⡚⣚⠺⢺⡺⣺⠞⢞⡞⣞⠾⢾⡾⣾"
+        "⠁⢁⡁⣁⠡⢡⡡⣡⠅⢅⡅⣅⠥⢥⡥⣥"
+        "⠑⢑⡑⣑⠱⢱⡱⣱⠕⢕⡕⣕⠵⢵⡵⣵"
+        "⠃⢃⡃⣃⠣⢣⡣⣣⠇⢇⡇⣇⠧⢧⡧⣧"
+        "⠓⢓⡓⣓⠳⢳⡳⣳⠗⢗⡗⣗⠷⢷⡷⣷"
+        "⠉⢉⡉⣉⠩⢩⡩⣩⠍⢍⡍⣍⠭⢭⡭⣭"
+        "⠙⢙⡙⣙⠹⢹⡹⣹⠝⢝⡝⣝⠽⢽⡽⣽"
+        "⠋⢋⡋⣋⠫⢫⡫⣫⠏⢏⡏⣏⠯⢯⡯⣯"
+        "⠛⢛⡛⣛⠻⢻⡻⣻⠟⢟⡟⣟⠿⢿⡿⣿"
+    )
+}
 
+
+def get_char(grid: bitarray, x: int, y: int, w: int) -> bitarray:
+    char = bitarray(8)
+    for i in range(4):
+        start = (y * 4 + i) * w + x * 2
+        end = start + 2
+        char[2 * i : 2 * i + 2] = grid[start:end]
+    return char
+
+
+class Canvas:
     __slots__ = ("width_chars", "height_chars", "_canvas", "width", "height", "_text")
 
-    def __init__(self, width_dots: int, height_dots: int, contents: int = 0) -> None:
-        self.width = width_dots
-        self.height = height_dots
-        width_chars = math.ceil(width_dots / BRAILLE_COLS)
-        height_chars = math.ceil(height_dots / BRAILLE_ROWS)
-        self.width_chars = width_chars
-        self.height_chars = height_chars
-        self._canvas = contents
+    def __init__(
+        self, width_dots: int, height_dots: int, contents: bitarray | None = None
+    ) -> None:
+        # todo - width/height are being rounded with little indication that they are,
+        #  which could be confusing. This simplifies things a lot though, so perhaps
+        #  the solution is to just hide away this detail (or have it be well documented)
+        self.width = width_dots + width_dots % 2
+        self.height = height_dots + height_dots % 4
+        # width_chars = math.ceil(width_dots / BRAILLE_COLS)
+        # height_chars = math.ceil(height_dots / BRAILLE_ROWS)
+        self.width_chars = self.width // BRAILLE_COLS
+        self.height_chars = self.height // BRAILLE_ROWS
+        self._canvas: bitarray
+
+        if contents is None:
+            self._canvas = bitarray(self.width * self.height)
+            self._canvas.setall(0)
+        else:
+            self._canvas = contents
+
         self._text: list[CanvasText] = []
 
     @classmethod
@@ -238,32 +277,42 @@ class Canvas:
         return cls(width * BRAILLE_COLS, height * BRAILLE_ROWS)
 
     def set_cell(self, x: int, y: int) -> Canvas:
-        return self.with_changes(((x, y),), "add")
+        """Sets the cell at the given coordinates to be filled."""
+        self._canvas[(self.height - y - 1) * self.width + x] = 1
+        return self
 
     def clear_cell(self, x: int, y: int) -> Canvas:
-        return self.with_changes(((x, y),), "clear")
+        """Sets the cell at the given coordinates to be empty."""
+        self._canvas[(self.height - y - 1) * self.width + x] = 0
+        return self
 
     def fill(self, mode: Literal["add", "clear"] = "add") -> Canvas:
         """Fills the entire canvas with the given mode."""
-        self._canvas = (1 << self.width_chars * self.height_chars * 8) - 1 if mode == "add" else 0
+        self._canvas.setall(1 if mode == "add" else 0)
+        return self
+
+    def invert(self) -> Canvas:
+        """Inverts the entire canvas."""
+        self._canvas.invert()
         return self
 
     clear_all = partialmethod(fill, mode="clear")
     set_all = partialmethod(fill, mode="add")
 
     def get_str(self) -> str:
-        lines = [
-            "".join(
-                [
-                    braille_table_str[self._canvas >> i * 8 & 0xFF]
-                    for i in range(self.width_chars * y, self.width_chars * (y + 1))
-                ]
-            )
-            for y in range(self.height_chars - 1, -1, -1)
-        ]
+        lines = []
+        for y in range(self.height_chars):
+            line = bitarray()
+            for x in range(self.width_chars):
+                char = get_char(self._canvas, x, y, self.width)
+                line.extend(char)
+
+            lines.append(b"".join(line.decode(braille_table_bitarray)).decode("utf-8"))
 
         # Add text
-        text_lines = itertools.chain.from_iterable(txt.in_split_lines() for txt in self._text)
+        text_lines = itertools.chain.from_iterable(
+            txt.in_split_lines() for txt in self._text
+        )
         for text in text_lines:
             char_length = len(text.text)
             char_y = round(text.y / BRAILLE_ROWS)
@@ -290,7 +339,9 @@ class Canvas:
 
             txt_start = char_x
             txt_end = char_x + char_length
-            lines[char_y] = "".join((lines[char_y][:txt_start], txt, lines[char_y][txt_end:]))
+            lines[char_y] = "".join(
+                (lines[char_y][:txt_start], txt, lines[char_y][txt_end:])
+            )
 
         return "\n".join(lines)
 
@@ -321,20 +372,9 @@ class Canvas:
         if mode not in ("add", "clear"):
             raise ValueError(f"Invalid mode {mode}")
 
-        delta = 0
+        val = 1 if mode == "add" else 0
         for x, y in filter(self._is_valid_coord, coords):
-
-            cell_x, char_x = divmod(x, BRAILLE_COLS)
-            cell_y, char_y = divmod(y, BRAILLE_ROWS)
-            char = coords_braille_mapping[(char_x, char_y)]
-            char_xy = cell_y * self.width_chars + cell_x
-            delta |= char << char_xy * 8
-
-        if mode == "add":
-            self._canvas |= delta
-        else:
-            self._canvas &= ~delta
-
+            self._canvas[(self.height - y - 1) * self.width + x] = val
         return self
 
     @overload
@@ -370,7 +410,6 @@ class Canvas:
         dotting: int = 1,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
-
         if x1 is None and y1 is None:
             assert isinstance(x0_or_start, tuple)
             assert isinstance(y0_or_end, tuple)
@@ -445,29 +484,51 @@ class Canvas:
     ) -> Canvas:
         return self.with_changes(_draw_arrow(start, end_or_angle, size), mode)
 
-    def apply_other(self, other: "Canvas", operation: Callable[[int, int], int]) -> Canvas:
+    def apply_other(
+        self, other: "Canvas", operation: Callable[[bitarray, bitarray], bitarray]
+    ) -> Canvas:
         """Apply a binary operation to the (integer value of) this canvas and another canvas, and
         return a new canvas with the result.
         """
-        return Canvas(self.width, self.height, operation(self._canvas, other._canvas))
+        ba = operation(self._canvas, other._canvas)
+        return Canvas(self.width, self.height, ba)
 
     def draw_image(
         self,
         image: str | Path | "Image",
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
-        """Draws an image on the canvas."""
-        return self.with_changes(_draw_image(image), mode)
+        try:
+            from PIL.Image import Dither, Image, open as open_image
+        except ImportError as e:
+            raise ImportError(
+                "ImportError while trying to import Pillow."
+                "\nImage loading requires the Pillow library to be installed:"
+                "\n    pip install Pillow"
+            ) from e
+
+        if isinstance(image, (str, Path)):
+            image = open_image(image)
+
+        image = image.resize((self.width, self.height))
+        image = image.convert("1", dither=Dither.FLOYDSTEINBERG)
+
+        im_bitarray = bitarray((1 if px else 0 for px in image.getdata(0)))
+        if mode == "clear":
+            im_bitarray = ~im_bitarray
+            self._canvas &= im_bitarray
+        else:
+            self._canvas |= im_bitarray
+
+        return self
 
     __or__ = partialmethod(apply_other, operation=operator.or_)
     __and__ = partialmethod(apply_other, operation=operator.and_)
     __xor__ = partialmethod(apply_other, operation=operator.xor)
-
-    def __invert__(self) -> Canvas:
-        return Canvas(self.width, self.height, ~self._canvas)
+    __invert__ = invert
 
     def copy(self) -> Canvas:
-        return Canvas(self.width, self.height, self._canvas)
+        return Canvas(self.width, self.height, self._canvas.copy())
 
     def __str__(self) -> str:
         """Return the canvas as a string, joining chars and newlines to form rows."""
@@ -478,12 +539,20 @@ class Canvas:
 
 
 if __name__ == "__main__":
-
     t = tuple(chr(BRAILLE_RANGE_START | i) for i in range(256))
     et = tuple(chr(BRAILLE_RANGE_START | i).encode() for i in range(256))
     tb = tuple(BRAILLE_RANGE_START | i for i in range(256))
     print("t", t)
     print("tb", tb)
+
+    canvas_t = Canvas(10, 10)
+    canvas_t.set_cell(0, 0)
+    canvas_t.set_cell(0, 1)
+    canvas_t.set_cell(1, 0)
+    canvas_t.set_cell(2, 0)
+    canvas_t.draw_line((0, 0), (9, 9))
+    print(canvas_t)
+    # exit()
 
     canvas_0 = Canvas(40, 40)
     canvas_0.draw_circle((14, 4), 2, angle_step=1)

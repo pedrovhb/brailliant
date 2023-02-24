@@ -9,15 +9,14 @@ import shutil
 import textwrap
 from abc import ABC
 from collections import deque
-from itertools import chain, pairwise
+from itertools import chain, pairwise, zip_longest
 
 import pymunk
-from astream.on_time import OnTime
-from pymunk import Vec2d
+from asynkets import async_getch, PeriodicPulse
 
 from brailliant.canvas import Canvas
 from examples.android_sensors import get_sensor_output
-from asynkets import async_getch, PeriodicPulse
+from pymunk import Vec2d
 
 err = deque(maxlen=20)
 
@@ -25,7 +24,7 @@ w, h = shutil.get_terminal_size()
 
 UI_W = 10
 UI_W_PADDING = 3
-CANVAS_W, CANVAS_H = w * 2 - 1, h
+CANVAS_W, CANVAS_H = w * 2, h - h % 4
 
 
 SIM_SCALE = 1
@@ -48,7 +47,6 @@ class Ball(PhysObj):
         radius: float,
         mass: float | None = None,
     ) -> None:
-
         x, y = x, y
         vx, vy = vx, vy
 
@@ -100,7 +98,9 @@ class Rectangle(PhysObj):
         self.body.velocity = vx, vy
         self.body.center_of_gravity = (width / 2, height / 2)
         self.body.angular_velocity = 4
-        self.shape = pymunk.Poly(self.body, [(0, 0), (width, 0), (width, height), (0, height)])
+        self.shape = pymunk.Poly(
+            self.body, [(0, 0), (width, 0), (width, height), (0, height)]
+        )
         self.body.moment = pymunk.moment_for_poly(mass, self.shape.get_vertices())
         self.shape.elasticity = SHAPE_ELASTICITY
 
@@ -203,7 +203,9 @@ def get_space():
     right_wall.elasticity = 1.0
     top_wall.elasticity = 1.0
     bottom_wall.elasticity = 1.0
-    space.add(left_wall, right_wall, top_wall, bottom_wall)  # Add the walls to the Pymunk space
+    space.add(
+        left_wall, right_wall, top_wall, bottom_wall
+    )  # Add the walls to the Pymunk space
 
     # Wall in the middle just for show
     mid_wall = pymunk.Segment(
@@ -361,7 +363,6 @@ async def show_balls(android_sensors: bool = False) -> None:
         nonlocal time_on, gravy_on, gravy, lasers_on, lasers_bounce_on
 
         async for ch in async_getch():
-
             # Toggle gravity on g
             if ch.lower() == b"g":
                 gravy_on = not gravy_on
@@ -401,7 +402,6 @@ async def show_balls(android_sensors: bool = False) -> None:
     dt = time_step
 
     def draw_light(copy: Canvas) -> None:
-
         light_start = Vec2d(2, CANVAS_H / 2)
         rays = chain.from_iterable(
             raycast(
@@ -418,7 +418,6 @@ async def show_balls(android_sensors: bool = False) -> None:
             copy.draw_line(*map(int, (ray_start.x, ray_start.y, ray_end.x, ray_end.y)))
 
     def get_ui_str():
-
         fps = 1 / dt
         stats = [
             f"fps: {fps:03.0f}",
@@ -439,18 +438,17 @@ async def show_balls(android_sensors: bool = False) -> None:
 
         # Draw the UI (stats and keys). It's joined by newlines and the control
         # characters for clearing a line; this is so that the UI is always
-        # redrawn (and e.g. updating FPS from 100 to 99 doesn't leave a ghost 1)
-        ui = f"\n\x1b[2K".join(
-            [
-                *stats,
-                "",
-                *keys,
-            ]
-        )
+        # redrawn (and e.g. updating FPS from 100 to 99 doesn't leave a ghost 1).
+        # The UI is displayed in two columns, with the keys on the left and the
+        # stats on the right.
+
+        zipped = zip_longest(stats, keys, fillvalue="")
+
+        ui = f"\n\x1b[2K".join(f"\x1b[2K{stat:<30} {key:<30}" for stat, key in zipped)
         ui = textwrap.indent(ui, " " * UI_W_PADDING)
         return ui
 
-    async def draw():
+    def draw():
         """Draw the current state of the simulation."""
         copy = canvas.copy()
 
@@ -501,7 +499,6 @@ async def show_balls(android_sensors: bool = False) -> None:
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(
         "Physics simulator",
         description="Simulate physics with pymunk and brailliant.",
