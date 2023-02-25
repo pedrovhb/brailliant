@@ -13,7 +13,7 @@ from pathlib import Path
 
 from asynkets import PeriodicPulse, async_getch
 
-from brailliant import sparkline
+from brailliant import sparkline, Canvas
 from brailliant.base import BRAILLE_COLS, BRAILLE_ROWS
 from brailliant.cli_utils import (
     create_ffmpeg_process,
@@ -69,7 +69,7 @@ def display_braille_media() -> None:
     )
     parser.add_argument(
         "input",
-        type=Path,
+        type=str,
         help="The input image or video.",
     )
     parser.add_argument(
@@ -128,6 +128,14 @@ def display_braille_media() -> None:
         action="store_true",
         help="Force the input to be treated as an image",
     )
+    force_media_type.add_argument(
+        "--font",
+        type=Path,
+        default=None,
+        help="Show text using a provided font",
+    )
+
+    # todo - better handle providing size when using font
 
     args = parser.parse_args()
 
@@ -135,6 +143,8 @@ def display_braille_media() -> None:
         media_type = "video"
     elif args.image:
         media_type = "image"
+    elif args.font:
+        media_type = "font"
     else:
         media_type = mimetypes.guess_type(args.input)[0]
         if media_type and media_type.startswith("image"):
@@ -147,11 +157,15 @@ def display_braille_media() -> None:
             media_type = "video"
 
     use_color = args.color if args.color is not None else sys.stdout.isatty()
+    args.input = Path(args.input) if media_type != "font" else args.input
+
+    term_size = shutil.get_terminal_size()
+    size = args.size if args.size else (term_size[0] * BRAILLE_COLS, term_size[1] * BRAILLE_ROWS)
 
     if media_type == "image":
         display_image(
             file=args.input,
-            size=args.size,
+            size=size,
             color=use_color,
             verbose=args.verbose,
             keep_ratio=args.keep_ratio,
@@ -164,7 +178,7 @@ def display_braille_media() -> None:
 
         coro = display_video(
             file=args.input,
-            size=args.size,
+            size=size,
             color=use_color,
             verbose=args.verbose,
             keep_ratio=args.keep_ratio,
@@ -176,6 +190,13 @@ def display_braille_media() -> None:
         except InvalidVideoError:
             print(f"Unable to determine format for file '{args.input}'.", file=sys.stderr)
             sys.exit(1)
+    elif media_type == "font":
+        display_font_text(
+            text=args.input,
+            font_path=args.font,
+            width=size[0],
+            invert=args.invert,
+        )
     else:
         print("Unknown media type", file=sys.stderr)
         sys.exit(1)
@@ -194,10 +215,6 @@ def display_image(
     log(f"Loading image {file}")
     image = image_open(file)
 
-    term_size = shutil.get_terminal_size()
-    size = size if size else (term_size[0] * BRAILLE_COLS, term_size[1] * BRAILLE_ROWS)
-    log(f"Converting image to braille with size {'x'.join(map(str, size))}")
-
     result_text = image_to_braille(
         image=image,
         resize=size,
@@ -206,8 +223,22 @@ def display_image(
         invert=invert,
     )
     height = result_text.count("\n")
-    setup_terminal(height)
+    setup_terminal(height + 1)
     print(result_text, end="")
+
+
+def display_font_text(
+    text: str,
+    font_path: Path,
+    width: int,
+    invert: bool,
+) -> None:
+    """Display text using a font."""
+    canvas = Canvas.from_font_text(text=text, font_path=font_path, width=width)
+    if invert:
+        canvas.invert()
+    setup_terminal(math.ceil(canvas.height / BRAILLE_ROWS))
+    print(canvas, end="")
 
 
 async def _show_frames(

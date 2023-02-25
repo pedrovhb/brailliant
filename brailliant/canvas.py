@@ -14,9 +14,11 @@ from brailliant import BRAILLE_COLS, BRAILLE_RANGE_START, BRAILLE_ROWS
 
 if TYPE_CHECKING:
     try:
-        from PIL.Image import Image
+        from PIL.Image import Image, ImageDraw, ImageFont
     except ImportError:
         Image = "Image"
+        ImageDraw = "ImageDraw"
+        ImageFont = "ImageFont"
 
 
 def _draw_line(
@@ -150,6 +152,57 @@ def _draw_arrow(
     )
 
 
+def _font_text_to_image(text: str, font_path: Path | str, width: int) -> Image:
+
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError as e:
+        raise ImportError(
+            "ImportError while trying to import Pillow."
+            "\nImage loading requires the Pillow library to be installed:"
+            "\n    pip install Pillow"
+        ) from e
+
+    font_path = str(font_path)
+
+    # create an ImageDraw object to measure the text size
+    measure_draw = ImageDraw.Draw(Image.new("RGB", (0, 0)))
+    font_size = 100
+    left = 0
+    right = None
+
+    # Do a binary search for the right font size
+    while True:
+        font = ImageFont.truetype(font_path, size=font_size)
+        bbox = measure_draw.multiline_textbbox((0, 0), text, font)
+        text_width = bbox[2] - bbox[0]
+        if text_width == width:
+            break
+        elif text_width < width:
+            left = font_size
+            if right is None:
+                right = font_size * 2
+            font_size = font_size * 2 if right is None else (font_size + right) // 2
+        else:
+            right = font_size
+            font_size = (font_size + left) // 2
+        if left == right or (right is not None and left + 1 == right):
+            font = ImageFont.truetype(font_path, size=left)
+            bbox = measure_draw.multiline_textbbox((0, 0), text, font)
+            break
+
+    # Create a new image with black background
+    image = Image.new("RGB", (width, bbox[3]), color="black")
+
+    # Create an ImageDraw object to draw on the image
+    draw = ImageDraw.Draw(image)
+
+    # Draw the text on the image
+    draw.multiline_text((0, 0), text, fill="white", font=font)
+
+    return image.crop(bbox)
+
+
 class TextAlign(str, Enum):
     LEFT = "left"
     RIGHT = "right"
@@ -225,8 +278,10 @@ class Canvas:
         # todo - width/height are being rounded with little indication that they are,
         #  which could be confusing. This simplifies things a lot though, so perhaps
         #  the solution is to just hide away this detail (or have it be well documented)
-        self.width = width_dots + width_dots % 2
-        self.height = height_dots + height_dots % 4
+
+        self.width = (width_dots + 1) // 2 * 2
+        self.height = (height_dots + 3) // 4 * 4
+
         # width_chars = math.ceil(width_dots / BRAILLE_COLS)
         # height_chars = math.ceil(height_dots / BRAILLE_ROWS)
         self.width_chars = self.width // BRAILLE_COLS
@@ -465,6 +520,7 @@ class Canvas:
         self,
         image: str | Path | "Image",
         mode: Literal["add", "clear"] = "add",
+        dither: bool = True,
     ) -> Canvas:
         try:
             from PIL.Image import Dither, Image, open as open_image
@@ -479,7 +535,7 @@ class Canvas:
             image = open_image(image)
 
         image = image.resize((self.width, self.height))
-        image = image.convert("1", dither=Dither.FLOYDSTEINBERG)
+        image = image.convert("1", dither=Dither.FLOYDSTEINBERG if dither else Dither.NONE)
 
         im_bitarray = bitarray((1 if px else 0 for px in image.getdata(0)))
         if mode == "clear":
@@ -489,6 +545,19 @@ class Canvas:
             self._canvas |= im_bitarray
 
         return self
+
+    def draw_font_text(self, text: str, font_path: Path | str, width: int) -> Canvas:
+        """Draws text using braille characters with the given font."""
+        print(f"Drawing text {text!r} with font {font_path!r} and width {width}")
+        return self.draw_image(
+            _font_text_to_image(text=text, font_path=font_path, width=width), dither=False
+        )
+
+    @classmethod
+    def from_font_text(cls, text: str, font_path: Path | str, width: int) -> Canvas:
+        """Creates a new canvas with the given text drawn using braille characters."""
+        img = _font_text_to_image(text=text, font_path=font_path, width=width)
+        return cls(img.width, img.height).draw_image(img, dither=False)
 
     __or__ = partialmethod(apply_other, operation=operator.or_)
     __and__ = partialmethod(apply_other, operation=operator.and_)
