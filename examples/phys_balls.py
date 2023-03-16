@@ -64,6 +64,7 @@ class Ball(PhysObj):
                 int(self.body.position.y / SIM_SCALE),
             ),
             int(self.shape.radius / SIM_SCALE),
+            False,
             angle_step=1.5,
         )
 
@@ -95,9 +96,7 @@ class Rectangle(PhysObj):
         self.body.velocity = vx, vy
         self.body.center_of_gravity = (width / 2, height / 2)
         self.body.angular_velocity = 4
-        self.shape = pymunk.Poly(
-            self.body, [(0, 0), (width, 0), (width, height), (0, height)]
-        )
+        self.shape = pymunk.Poly(self.body, [(0, 0), (width, 0), (width, height), (0, height)])
         self.body.moment = pymunk.moment_for_poly(mass, self.shape.get_vertices())
         self.shape.elasticity = SHAPE_ELASTICITY
 
@@ -195,9 +194,7 @@ def get_space():
     right_wall.elasticity = 1.0
     top_wall.elasticity = 1.0
     bottom_wall.elasticity = 1.0
-    space.add(
-        left_wall, right_wall, top_wall, bottom_wall
-    )  # Add the walls to the Pymunk space
+    space.add(left_wall, right_wall, top_wall, bottom_wall)  # Add the walls to the Pymunk space
 
     mid_wall = pymunk.Segment(
         space.static_body,
@@ -359,6 +356,7 @@ async def show_balls() -> None:
         ).draw_circle(
             (CANVAS_W + UI_W // 2 + UI_W_PADDING, CANVAS_H // 2),
             UI_W // 2 + UI_W_PADDING // 2,
+            False,
         )
 
         s = copy.get_str_control_chars()
@@ -399,8 +397,6 @@ async def show_balls() -> None:
 
 if __name__ == "__main__":
     mode = "android" if len(sys.argv) > 1 and sys.argv[1] == "--android" else "pc"
-    RATE = (
-        int(sys.argv[2]) if len(sys.argv) > 2 else 60
-    )  # 120 Hz looks great on my monitor :)
+    RATE = int(sys.argv[2]) if len(sys.argv) > 2 else 60  # 120 Hz looks great on my monitor :)
 
     asyncio.run(show_balls())

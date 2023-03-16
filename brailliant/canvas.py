@@ -1,13 +1,36 @@
 from __future__ import annotations
 
-import itertools
+import asyncio
+import bisect
+import textwrap
+from itertools import chain, pairwise, count, takewhile, product
 import math
 import operator
+import time
+from _decimal import Decimal
+from bisect import insort
+from collections import defaultdict
+from dataclasses import dataclass
 from enum import Enum
+from fractions import Fraction
 from functools import partialmethod
 from pathlib import Path
-from typing import Callable, Iterable, Iterator, Literal, overload, Tuple, TYPE_CHECKING
+from typing import (
+    Callable,
+    Iterable,
+    Iterator,
+    Literal,
+    overload,
+    Tuple,
+    TYPE_CHECKING,
+    Dict,
+    List,
+    Set,
+    ClassVar,
+    NamedTuple,
+)
 
+from asynkets import async_getch
 from bitarray import bitarray
 
 from brailliant import BRAILLE_COLS, BRAILLE_RANGE_START, BRAILLE_ROWS
@@ -22,10 +45,12 @@ if TYPE_CHECKING:
 
 
 def _draw_line(
-    start: Tuple[int, int],
-    end: Tuple[int, int],
+    start_x: int,
+    start_y: int,
+    end_x: int,
+    end_y: int,
     dotting: int = 1,
-) -> Iterable[Tuple[int, int]]:
+) -> Iterator[Tuple[int, int]]:
     """Yields all points on the line between the start and end coordinates.
 
     Args:
@@ -36,12 +61,9 @@ def _draw_line(
     Yields:
         All points on the line between the start and end coordinates.
     """
-    x0, y0 = start
-    x1, y1 = end
-
     # Calculate the change in x and y
-    dx = x1 - x0
-    dy = y1 - y0
+    dx = end_x - start_x
+    dy = end_y - start_y
 
     # Calculate the number of steps to take
     steps = abs(dx) if abs(dx) > abs(dy) else abs(dy)
@@ -51,8 +73,8 @@ def _draw_line(
     y_increment = dy / steps if steps else 0
 
     # Iterate over the number of steps and yield each point
-    x = float(x0)
-    y = float(y0)
+    x = float(start_x)
+    y = float(start_y)
     for i in range(steps):
         if i % dotting == 0:
             yield round(x), round(y)
@@ -60,71 +82,168 @@ def _draw_line(
         y += y_increment
 
 
-def _draw_polygon(vertices: Iterable[tuple[int, int]]) -> Iterable[tuple[int, int]]:
+def _regular_polygon_vertices(
+    center_x: int,
+    center_y: int,
+    radius: int,
+    sides: int = 5,
+    rotation: float = 0,
+) -> list[Tuple[int, int]]:
+    coordinates = []
+    angle_step = Fraction(360, sides)
+
+    # Ensure the rotation 0 polygon always has a horizontal bottom -
+    # start drawing the first vertice at 90 + angle_step / 2
+    # rotation += Fraction(angle_step, )
+    rotation -= 90 + Fraction(angle_step, 2)
+
+    rotation = math.radians(rotation)
+    angle_step = math.radians(angle_step)
+
+    for i in range(sides):
+        x = int(math.cos(i * angle_step + rotation) * radius) + center_x
+        y = int(math.sin(i * angle_step + rotation) * radius) + center_y
+        coordinates.append((x, y))
+    return coordinates
+
+
+def _fill_convex_outline(outline: Iterable[Tuple[int, int]]):
+    # Store the min and max x values for each y value, so we can fill in all
+    # the pixels between them
+    min_max_x: Dict[int, Tuple[int, int]] = {}
+    # print(outline)
+    for xy in outline:
+        x, y = xy
+        if y not in min_max_x:
+            min_max_x[y] = x, x
+            continue
+        min_x = min(x, min_max_x[y][0])
+        max_x = max(x, min_max_x[y][1])
+        min_max_x[y] = min_x, max_x
+
+    for y, (min_x, max_x) in min_max_x.items():
+        for x in range(min_x, max_x + 1):
+            yield x, y
+
+
+def _draw_polygon(
+    vertices: Iterable[Tuple[int, int]],
+    filled: bool = False,
+) -> Iterator[Tuple[int, int]]:
     """Yields all points on the perimeter of a polygon with the given vertices."""
-    vertices = tuple(vertices)
 
-    with open("test.txt", "a") as f:
-        print(vertices, file=f)
-
-    for i in range(len(vertices)):
-        start = vertices[i]
-        end = vertices[(i + 1) % len(vertices)]
-        yield from _draw_line(start, end)
+    if filled:
+        yield from _fill_convex_outline(_draw_polygon(vertices, filled=False))
+    else:
+        vertices = tuple(vertices)
+        for i in range(len(vertices)):
+            start = vertices[i]
+            end = vertices[(i + 1) % len(vertices)]
+            yield from _draw_line(*start, *end)
 
 
 def _draw_arc(
-    center: tuple[int, int],
+    x: int,
+    y: int,
     radius: int,
+    filled: bool = False,
     start_angle: float = 0,
     end_angle: float = 360,
     angle_step: float | None = None,
-) -> Iterable[tuple[int, int]]:
+) -> Iterator[Tuple[int, int]]:
     """Draws a circle with the given center and radius.
 
     Pretty sure there's a better way to do this, but ¯\\_(ツ)_/¯
     """
-    x, y = center
-    start_angle = math.radians(start_angle)
-    end_angle = math.radians(end_angle)
-    if angle_step is None:
-        angle_step = 2
-    angle_step = math.radians(angle_step)
-    for angle in itertools.takewhile(
-        lambda a: a <= end_angle,
-        itertools.count(start_angle, angle_step),
-    ):
-        x_offset = round(math.cos(angle) * radius)
-        y_offset = round(math.sin(angle) * radius)
-        yield x + x_offset, y + y_offset
+    # if start_angle < 0:
+    #     start_angle *= -1
+    #     start_angle += 360
+    # if end_angle < 0:
+    #     end_angle *= -1
+    #     end_angle += 360
+    # start_angle %= 360
+    # end_angle %= 360
+
+    if filled:
+        it = _draw_arc(
+            x,
+            y,
+            radius,
+            filled=False,
+            start_angle=start_angle,
+            end_angle=end_angle,
+            angle_step=angle_step,
+        )
+
+        if start_angle % 360 != end_angle % 360:
+
+            def _pizza_slice():
+                prev_point = next(it)
+                yield from _draw_line(x, y, *prev_point)
+                for point in it:
+                    yield point
+                    prev_point = point
+                yield from _draw_line(*prev_point, x, y)
+                # todo - implement filled arcs
+
+            yield from _pizza_slice()
+
+        else:
+            yield from _fill_convex_outline(it)
+    else:
+        start_angle = math.radians(start_angle)
+        end_angle = math.radians(end_angle)
+        if angle_step is None:
+            angle_step = 2
+        angle_step = math.radians(angle_step)
+        for angle in takewhile(
+            lambda a: a <= end_angle,
+            count(start_angle, angle_step),
+        ):
+            x_offset = round(math.cos(angle) * radius)
+            y_offset = round(math.sin(angle) * radius)
+            yield x + x_offset, y + y_offset
+
+
+class _LineDefinition(NamedTuple):
+    start_x: int
+    start_y: int
+    end_x: int
+    end_y: int
 
 
 def _draw_rectangle(
-    x0: int,
-    y0: int,
-    x1: int,
-    y1: int,
-) -> Iterable[tuple[int, int]]:
-    """Yields all points between the start and end coordinates of a rectangle."""
-    yield from itertools.chain(
-        ((x, y0) for x in range(x0, x1)),
-        ((x, y1) for x in range(x0, x1)),
-        ((x0, y) for y in range(y0, y1)),
-        ((x1, y) for y in range(y0, y1)),
-    )
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    filled: bool = False,
+    rotation: float = 0,
+    anchor_x: float = 0,
+    anchor_y: float = 0,
+    pivot_x: float = 0.5,
+    pivot_y: float = 0.5,
+) -> Iterator[Tuple[int, int]]:
+    # Calculate the angle in radians
+    angle = math.radians(rotation % 360)
+    cos = math.cos(angle)
+    sin = math.sin(angle)
 
+    # Pivot point is the point around which the rectangle is rotated. Here we convert it to
+    # an absolute position rather than a relative position to the width and height.
+    pivot_x = round(width * pivot_x)
+    pivot_y = round(height * pivot_y)
 
-def _draw_triangle(vertices: Iterable[tuple[int, int]]) -> Iterable[tuple[int, int]]:
-    """Yields all points on the perimeter of a triangle with the given vertices."""
-    vertices = tuple(vertices)
-    yield from _draw_line(vertices[0], vertices[1])
-    yield from _draw_line(vertices[1], vertices[2])
-    yield from _draw_line(vertices[2], vertices[0])
+    # Anchor point is the point around which the rectangle is positioned. The bottom left
+    # corner of the rectangle represents the anchor point (0, 0). Here we convert it to an
+    # absolute position rather than a relative position to the width and height.
+    anchor_x = round(width * anchor_x)
+    anchor_y = round(height * anchor_y)
 
 
 def _draw_arrow(
     start: Tuple[int, int], end_or_angle: Tuple[int, int] | float, size: int
-) -> Iterable[Tuple[int, int]]:
+) -> Iterator[Tuple[int, int]]:
     if isinstance(end_or_angle, (float, int)):
         end = (
             start[0] + int(size * math.cos(math.radians(end_or_angle))),
@@ -152,8 +271,7 @@ def _draw_arrow(
     )
 
 
-def _font_text_to_image(text: str, font_path: Path | str, width: int) -> Image:
-
+def _font_text_to_image(text: str, width: int, font_path: Path | str | None = None) -> Image:
     try:
         from PIL import Image, ImageDraw, ImageFont
     except ImportError as e:
@@ -163,10 +281,14 @@ def _font_text_to_image(text: str, font_path: Path | str, width: int) -> Image:
             "\n    pip install Pillow"
         ) from e
 
-    font_path = str(font_path)
+    # todo - allow text rotation
+
+    font_path = str(font_path) if font_path else None
 
     # create an ImageDraw object to measure the text size
     measure_draw = ImageDraw.Draw(Image.new("RGB", (0, 0)))
+    measure_draw.fontmode = "1"
+
     font_size = 100
     left = 0
     right = None
@@ -196,6 +318,7 @@ def _font_text_to_image(text: str, font_path: Path | str, width: int) -> Image:
 
     # Create an ImageDraw object to draw on the image
     draw = ImageDraw.Draw(image)
+    draw.fontmode = "1"  # Disable antialiasing
 
     # Draw the text on the image
     draw.multiline_text((0, 0), text, fill="white", font=font)
@@ -224,7 +347,7 @@ class CanvasText:
         self.parent = parent
         self.alignment = alignment
 
-    def in_split_lines(self) -> Iterable[CanvasText]:
+    def in_split_lines(self) -> Iterator[CanvasText]:
         """Yields a new CanvasText for each line of text."""
         for i, line in enumerate(self.text.splitlines()):
             yield CanvasText(
@@ -279,13 +402,12 @@ class Canvas:
         #  which could be confusing. This simplifies things a lot though, so perhaps
         #  the solution is to just hide away this detail (or have it be well documented)
 
-        self.width = (width_dots + 1) // 2 * 2
-        self.height = (height_dots + 3) // 4 * 4
+        self.width_chars = (width_dots + BRAILLE_COLS - 1) // BRAILLE_COLS
+        self.height_chars = (height_dots + BRAILLE_ROWS - 1) // BRAILLE_ROWS
 
-        # width_chars = math.ceil(width_dots / BRAILLE_COLS)
-        # height_chars = math.ceil(height_dots / BRAILLE_ROWS)
-        self.width_chars = self.width // BRAILLE_COLS
-        self.height_chars = self.height // BRAILLE_ROWS
+        self.width = self.width_chars * BRAILLE_COLS
+        self.height = self.height_chars * BRAILLE_ROWS
+
         self._canvas: bitarray
 
         if contents is None:
@@ -297,7 +419,7 @@ class Canvas:
         self._text: list[CanvasText] = []
 
     @classmethod
-    def with_cell_size(cls, width: int, height: int) -> Canvas:
+    def with_chars_size(cls, width: int, height: int) -> Canvas:
         """Returns a new canvas with the given width and height in number of characters
         (as opposed to number of dots).
         """
@@ -323,8 +445,15 @@ class Canvas:
         self._canvas.invert()
         return self
 
-    clear_all = partialmethod(fill, mode="clear")
-    set_all = partialmethod(fill, mode="add")
+    def clear_all(self) -> Canvas:
+        """Clears the entire canvas."""
+        self._canvas.setall(0)
+        return self
+
+    def set_all(self) -> Canvas:
+        """Sets the entire canvas."""
+        self._canvas.setall(1)
+        return self
 
     def get_str(self) -> str:
         lines = []
@@ -337,7 +466,7 @@ class Canvas:
             lines.append(b"".join(line.decode(braille_table_bitarray)).decode("utf-8"))
 
         # Add text
-        text_lines = itertools.chain.from_iterable(txt.in_split_lines() for txt in self._text)
+        text_lines = chain.from_iterable(txt.in_split_lines() for txt in self._text)
         for text in text_lines:
             char_length = len(text.text)
             char_y = round(text.y / BRAILLE_ROWS)
@@ -379,16 +508,9 @@ class Canvas:
         self._text.append(ct)
         return self
 
-    def get_str_control_chars(self) -> str:
-        """Returns a string with control characters to draw the canvas."""
-        return self.get_str().replace("\n", "\x1b[1B\r")
-
-    def _is_valid_coord(self, xy: tuple[int, int]) -> bool:
-        return 0 <= xy[0] < self.width and 0 <= xy[1] < self.height
-
     def with_changes(
         self,
-        coords: Iterable[tuple[int, int]],
+        coords: Iterable[Tuple[int, int]],
         mode: Literal["add", "clear"],
     ) -> Canvas:
         """Modify the canvas by setting or clearing the dots on the coordinates given by coords."""
@@ -396,15 +518,17 @@ class Canvas:
             raise ValueError(f"Invalid mode {mode}")
 
         val = 1 if mode == "add" else 0
-        for x, y in filter(self._is_valid_coord, coords):
-            self._canvas[(self.height - y - 1) * self.width + x] = val
+        w, h = self.width, self.height
+        for x, y in coords:
+            if 0 <= x < w and 0 <= y < h:
+                self._canvas[(h - y - 1) * w + x] = val
         return self
 
     @overload
     def draw_line(
         self,
-        x0_or_start: tuple[int, int],
-        y0_or_end: tuple[int, int],
+        x0_or_start: Tuple[int, int],
+        y0_or_end: Tuple[int, int],
         x1: None = None,
         y1: None = None,
         dotting: int = ...,
@@ -426,82 +550,213 @@ class Canvas:
 
     def draw_line(
         self,
-        x0_or_start: tuple[int, int] | int,
-        y0_or_end: tuple[int, int] | int,
-        x1: int | None = None,
-        y1: int | None = None,
+        start_x: int,
+        start_y: int,
+        end_x: int,
+        end_y: int,
         dotting: int = 1,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
-        if x1 is None and y1 is None:
-            assert isinstance(x0_or_start, tuple)
-            assert isinstance(y0_or_end, tuple)
-            start_tup = x0_or_start
-            end_tup = y0_or_end
-        else:
-            assert all(isinstance(i, int) for i in (x0_or_start, y0_or_end, x1, y1))
-            start_tup = (x0_or_start, y0_or_end)
-            end_tup = (x1, y1)
+        return self.with_changes(_draw_line(start_x, start_y, end_x, end_y, dotting=dotting), mode)
 
-        x0, y0 = start_tup
-        x1, y1 = end_tup
-        return self.with_changes(_draw_line((x0, y0), (x1, y1), dotting=dotting), mode)
+    def draw_polygon(
+        self,
+        center_x: int,
+        center_y: int,
+        sides: int,
+        radius: int,
+        rotation: float = 0,
+        filled: bool = False,
+        mode: Literal["add", "clear"] = "add",
+    ) -> Canvas:
+        vertices = _regular_polygon_vertices(
+            center_x,
+            center_y,
+            sides=sides,
+            radius=radius,
+            rotation=rotation,
+        )
+        return self.with_changes(_draw_polygon(vertices, filled=filled), mode=mode)
 
     def draw_arc(
         self,
-        center: tuple[int, int],
+        x: int,
+        y: int,
         radius: int,
         start_angle: float = 0,
         end_angle: float = 360,
         angle_step: float | None = None,
+        filled: bool = False,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
         """Draws a circle with the given center and radius."""
         return self.with_changes(
-            _draw_arc(center, radius, start_angle, end_angle, angle_step),
+            _draw_arc(x, y, radius, filled, start_angle, end_angle, angle_step),
             mode,
         )
 
     def draw_circle(
         self,
-        center: tuple[int, int],
+        center_x: int,
+        center_y: int,
         radius: int,
+        filled: bool = False,
         angle_step: float = 1,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
         return self.draw_arc(
-            center=center,
+            x=center_x,
+            y=center_y,
             radius=radius,
             start_angle=0,
             end_angle=360,
             angle_step=angle_step,
+            filled=filled,
             mode=mode,
         )
 
     def draw_rectangle(
         self,
-        x0: int,
-        y0: int,
-        x1: int,
-        y1: int,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        rotation: float = 0,
+        filled: bool = False,
+        anchor_x: float = 0.5,
+        anchor_y: float = 0.5,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
-        return self.with_changes(_draw_rectangle(x0, y0, x1, y1), mode)
+        changes = _draw_rectangle(
+            x=x,
+            y=y,
+            width=width,
+            height=height,
+            rotation=rotation,
+            filled=filled,
+            pivot_x=anchor_x,
+            pivot_y=anchor_y,
+        )
+        return self.with_changes(changes, mode)
 
-    def draw_polygon(
+    def draw_border(
         self,
-        coords: Iterable[tuple[int, int]],
+        dotting: int = 1,
+        margin: int = 2,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
-        pol = tuple(_draw_polygon(coords))
-        with open("pol.txt", "a") as f:
-            f.write(f"{pol}\r")
-        return self.with_changes(pol, mode)
+        # Opposite mode for margins
+        margin_mode = "clear" if mode == "add" else "add"
+
+        # yield from self.draw_rectangle(
+        #     x=0,
+        #     y=0,
+        #     width=margin,
+        #     height=self.height,
+        #     filled=True,
+        #     anchor=AnchorPoint.TOP_LEFT,
+        #     mode=margin_mode,
+        # )
+
+        self.draw_rectangle(
+            x=0,
+            y=0,
+            width=margin,
+            height=self.height,
+            filled=True,
+            mode=margin_mode,
+        )
+        self.draw_rectangle(
+            x=self.width - margin,
+            y=0,
+            width=margin,
+            height=self.height,
+            filled=True,
+            mode=margin_mode,
+        )
+        self.draw_rectangle(
+            x=0,
+            y=0,
+            width=self.width,
+            height=margin,
+            filled=True,
+            mode=margin_mode,
+        )
+        self.draw_rectangle(
+            x=0,
+            y=self.height - margin,
+            width=self.width,
+            height=margin,
+            filled=True,
+            mode=margin_mode,
+        )
+
+        if dotting:
+            # Draw the border
+            self.draw_line(
+                margin,
+                margin,
+                self.width - margin,
+                margin,
+                dotting=dotting,
+            )
+            self.draw_line(
+                self.width - margin,
+                margin,
+                self.width - margin,
+                self.height - margin,
+                dotting=dotting,
+            )
+            self.draw_line(
+                self.width - margin,
+                self.height - margin,
+                margin,
+                self.height - margin,
+                dotting=dotting,
+            )
+            self.draw_line(
+                margin,
+                self.height - margin,
+                margin,
+                margin,
+                dotting=dotting,
+            )
+
+        return self
+
+    def draw_grid(
+        self,
+        x_spacing: int,
+        y_spacing: int,
+        dotting: int = 1,
+        mode: Literal["add", "clear"] = "add",
+    ) -> Canvas:
+        lines = chain(
+            *(
+                _draw_line(x, 0, x, self.height, dotting=dotting)
+                for x in range(0, self.width, x_spacing)
+            ),
+            *(
+                _draw_line(0, y, self.width, y, dotting=dotting)
+                for y in range(0, self.height, y_spacing)
+            ),
+        )
+        return self.with_changes(lines, mode)
+
+    # def draw_polygon(
+    #     self,
+    #     coords: Iterable[Tuple[int, int]],
+    #     mode: Literal["add", "clear"] = "add",
+    # ) -> Canvas:
+    #     pol = tuple(_draw_polygon(coords))
+    #     with open("pol.txt", "a") as f:
+    #         f.write(f"{pol}\r")
+    #     return self.with_changes(pol, mode)
 
     def draw_arrow(
         self,
-        start: tuple[int, int],
-        end_or_angle: tuple[int, int] | float,
+        start: Tuple[int, int],
+        end_or_angle: Tuple[int, int] | float,
         size: int = 5,
         mode: Literal["add", "clear"] = "add",
     ) -> Canvas:
@@ -519,11 +774,19 @@ class Canvas:
     def draw_image(
         self,
         image: str | Path | "Image",
+        x: int = 0,
+        y: int = 0,
+        resize: Literal["cover"]
+        | Tuple[int, int]
+        | Tuple[int, None]
+        | Tuple[None, int]
+        | None = None,
         mode: Literal["add", "clear"] = "add",
         dither: bool = True,
     ) -> Canvas:
         try:
-            from PIL.Image import Dither, Image, open as open_image
+            from PIL.Image import Dither, open as open_image, Resampling
+            import PIL.Image
         except ImportError as e:
             raise ImportError(
                 "ImportError while trying to import Pillow."
@@ -534,10 +797,32 @@ class Canvas:
         if isinstance(image, (str, Path)):
             image = open_image(image)
 
-        image = image.resize((self.width, self.height))
-        image = image.convert("1", dither=Dither.FLOYDSTEINBERG if dither else Dither.NONE)
+        if resize is not None:
+            resample = Resampling.LANCZOS
+            if resize == "cover":
+                image = image.resize((self.width, self.height), resample=resample)
+            else:
+                w, h = resize
+                if w is None:
+                    w = int(image.width * h / image.height)
+                elif h is None:
+                    h = int(image.height * w / image.width)
+                image = image.resize((w, h), resample=resample)
 
-        im_bitarray = bitarray((1 if px else 0 for px in image.getdata(0)))
+        # print(f"Image size: {image.width}x{image.height}")
+
+        final_img = PIL.Image.new(
+            mode=image.mode,
+            size=(self.width, self.height),
+            color=0 if mode == "clear" else 255,
+        )
+        final_img.paste(image, (x, y))
+        final_img = final_img.convert("1", dither=Dither.FLOYDSTEINBERG if dither else Dither.NONE)
+        # print(f"Image size: {final_img.size}")
+
+        final_img.save("final_img.png")
+
+        im_bitarray = bitarray((1 if px else 0 for px in final_img.getdata(0)))
         if mode == "clear":
             im_bitarray = ~im_bitarray
             self._canvas &= im_bitarray
@@ -546,11 +831,22 @@ class Canvas:
 
         return self
 
-    def draw_font_text(self, text: str, font_path: Path | str, width: int) -> Canvas:
+    def draw_font_text(
+        self,
+        text: str,
+        font_path: Path | str,
+        width: int,
+        x: int = 0,
+        y: int = 0,
+    ) -> Canvas:
         """Draws text using braille characters with the given font."""
         print(f"Drawing text {text!r} with font {font_path!r} and width {width}")
         return self.draw_image(
-            _font_text_to_image(text=text, font_path=font_path, width=width), dither=False
+            _font_text_to_image(text=text, font_path=font_path, width=width),
+            dither=False,
+            # resize=(width, None),
+            x=x,
+            y=y,
         )
 
     @classmethod
@@ -574,6 +870,11 @@ class Canvas:
     def __repr__(self) -> str:
         return f"Canvas({self.width}, {self.height}, {hex(self._canvas)})"
 
+    def __eq__(self, other):
+        if isinstance(other, Canvas) and self._canvas == other._canvas:
+            return True
+        return False
+
 
 if __name__ == "__main__":
     t = tuple(chr(BRAILLE_RANGE_START | i) for i in range(256))
@@ -587,15 +888,15 @@ if __name__ == "__main__":
     canvas_t.set_cell(0, 1)
     canvas_t.set_cell(1, 0)
     canvas_t.set_cell(2, 0)
-    canvas_t.draw_line((0, 0), (9, 9))
+    canvas_t.draw_line(0, 0, 9, 9)
     print(canvas_t)
     # exit()
 
     canvas_0 = Canvas(40, 40)
-    canvas_0.draw_circle((14, 4), 2, angle_step=1)
-    canvas_0.draw_circle((24, 4), 6, angle_step=1)
-    canvas_0.draw_circle((34, 4), 8, angle_step=1)
-    canvas_0.draw_circle((24, 24), 10, angle_step=1)
+    canvas_0.draw_circle(14, 4, 2, False, angle_step=1)
+    canvas_0.draw_circle(24, 4, 6, False, angle_step=1)
+    canvas_0.draw_circle(34, 4, 8, False, angle_step=1)
+    canvas_0.draw_circle(24, 24, 10, False, angle_step=1)
     canvas_0.draw_rectangle(13, 13, 35, 35)
     print("=====")
     print(canvas_0)
@@ -613,7 +914,7 @@ if __name__ == "__main__":
     """
 
     canvas_1 = Canvas(40, 40)
-    canvas_1.draw_circle((15, 15), 10)
+    canvas_1.draw_circle(15, 15, 10, False)
     print("=====")
     print(canvas_1)
     """
@@ -630,7 +931,7 @@ if __name__ == "__main__":
     """
 
     canvas_2 = Canvas(40, 40)
-    canvas_2.draw_circle((25, 25), 10)
+    canvas_2.draw_circle(25, 25, 10, False)
     print("=====")
     print(canvas_2)
     """
@@ -701,3 +1002,269 @@ if __name__ == "__main__":
     ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀kind world!⠀⠀⠀⠀⡇
     ⣇⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣁⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡇
     """
+
+    c = Canvas(100, 100)
+    c.draw_circle(50, 50, 49, False, mode="add")
+    c.draw_font_text(
+        "Hello world",
+        "/home/pedro/fhsenv/venv/lib/python3.10/site-packages/cv2/qt/fonts/DejaVuSans.ttf",
+        80,
+        10,
+        20,
+    )
+    print(c)
+
+    c.draw_polygon(50, 50, 4, 20, 0)
+    c.draw_polygon(50, 50, 4, 20, 45)
+    print(c)
+
+    c.clear_all()
+    # c.draw_polygon(50, 50, 5, 40, 0)
+    # c.draw_polygon(50, 50, 9, 40, 0, filled=True)
+    c.draw_polygon(50, 50, 5, 35, 0, filled=True, mode="add")
+    c.draw_polygon(50, 50, 5, 30, 0, filled=True, mode="clear")
+    c.draw_polygon(50, 50, 5, 25, 0, filled=False)
+
+    c.draw_circle(20, 20, 10, filled=True)
+    c.draw_arc(80, 80, 10, start_angle=90, end_angle=380, filled=False)
+    c.draw_arc(20, 80, 10, start_angle=90, end_angle=380, filled=True)
+
+    print(c)
+
+    # c2.draw_polygon((50, 50), 9, 35, 0, filled=True, mode="add")
+
+    c2 = Canvas(200, 200)
+    c2.draw_grid(10, 10, dotting=10, mode="add")
+    c2.draw_border(1, 1, mode="add")
+
+    c2.draw_rectangle(10, 10, 20, 20, filled=True, mode="add")
+    c2.draw_rectangle(10, 40, 20, 20, filled=False, mode="add")
+    c2.draw_rectangle(
+        40,
+        int(10 + 10 * math.sqrt(2)),
+        20,
+        20,
+        rotation=45,
+        anchor_x=0,
+        anchor_y=0,
+        filled=True,
+        mode="add",
+    )
+
+    c2.draw_rectangle(40, 60, 20, 20, filled=False)
+    c2.draw_rectangle(80, 20, 20, 40, rotation=5, filled=False)
+
+    print(c2)
+
+    c3 = Canvas(200, 200)
+    c3.draw_grid(10, 10, dotting=10, mode="add")
+    c3.draw_border(1, 1, mode="add")
+
+    # Demonstrate effect of different anchor/pivot points on rectangle position/rotation
+
+    # anchor_combinations = product([0, 0.5, 1], repeat=2)
+    # pivot_combinations = product([0, 0.5, 1], repeat=2)
+    #
+    draw_position = 50
+    #
+    # canvi = []
+    #
+    # for anchor_x, anchor_y in anchor_combinations:
+    #     # anchor_x, anchor_y = 0.5, 0.5
+    #     # anchor_x, anchor_y = 0, 0
+    #     for pivot_x, pivot_y in pivot_combinations:
+    #         for rotation in (0, 5, 15, 45, 80, 90, 180, 270, 360, 450, 1080):
+    #             canvas = Canvas(100, 100)
+    #             canvas.draw_grid(10, 10, dotting=10, mode="add")
+    #             canvas.draw_border(1, 1, mode="add")
+    #             circle = Canvas(100, 100)
+    #             circle.draw_circle(draw_position, draw_position, 3, False, mode="add")
+    #             canvas.draw_rectangle(
+    #                 draw_position,
+    #                 draw_position,
+    #                 30,
+    #                 20,
+    #                 anchor_x=anchor_x,
+    #                 anchor_y=anchor_y,
+    #                 rotation=rotation,
+    #                 filled=True,
+    #                 mode="add",
+    #             )
+    #             canvas ^= circle
+    #             canvas.write_text(
+    #                 x=10,
+    #                 y=10,
+    #                 text=f"anchor: ({anchor_x:.2f}, {anchor_y:.2f})\npivot:  ({pivot_x:.2f}, {pivot_y:.2f})\nrotation: {rotation}",
+    #             )
+    #             # canvi.append(str(canvas))
+    #             print(canvas)
+
+    async def t():
+        anchor_x, anchor_y = 0.5, 0.5
+        pos_x, pos_y = draw_position, draw_position
+        rotation = 0
+        async for cmd in async_getch():
+            if cmd == b"q":
+                break
+            elif cmd == b"r":
+                anchor_y += 0.1
+            elif cmd == b"f":
+                anchor_y -= 0.1
+            elif cmd == b"t":
+                rotation += 1
+            elif cmd == b"e":
+                rotation -= 1
+            elif cmd == b"g":
+                anchor_x += 0.1
+            elif cmd == b"d":
+                anchor_x -= 0.1
+            elif cmd == b"u":
+                pos_y += 1
+            elif cmd == b"j":
+                pos_y -= 1
+            elif cmd == b"h":
+                pos_x += 1
+            elif cmd == b"k":
+                pos_x -= 1
+
+            canvas = Canvas(100, 100)
+            canvas.draw_grid(10, 10, dotting=10, mode="add")
+            canvas.draw_border(1, 1, mode="add")
+            circle = Canvas(100, 100)
+            circle.draw_circle(draw_position, draw_position, 3, False, mode="add")
+            canvas.draw_rectangle(
+                pos_x,
+                pos_y,
+                30,
+                20,
+                anchor_x=anchor_x,
+                anchor_y=anchor_y,
+                rotation=rotation,
+                filled=True,
+                mode="add",
+            )
+            canvas ^= circle
+            canvas.write_text(
+                x=10,
+                y=10,
+                text=f"anchor: ({anchor_x:.2f}, {anchor_y:.2f})\npos:    ({pos_x:.2f}, {pos_y:.2f})\nrotation: {rotation}",
+            )
+            canvas.write_text(x=10, y=90, text=f"Press q to quit. Last command: {cmd}")
+            # Clear screen
+            print("\033[2J\033[1;1H", end="")
+            print(canvas)
+
+    asyncio.run(t())
+
+    exit()
+    # To create columns of text with newlines, use the following:
+
+    # Anchor at top left corner
+    c3.draw_rectangle(10, 10, 20, 20, anchor_x=0, anchor_y=0, filled=True, mode="add")
+
+    # Anchor at center
+    c3.draw_rectangle(10, 40, 20, 20, anchor_x=0.5, anchor_y=0.5, filled=True, mode="add")
+
+    # Anchor at bottom right corner
+    c3.draw_rectangle(10, 70, 20, 20, anchor_x=1, anchor_y=1, filled=True, mode="add")
+
+    # Anchor at top right corner
+    c3.draw_rectangle(40, 10, 20, 20, anchor_x=1, anchor_y=0, filled=True, mode="add")
+
+    # Anchor at bottom left corner
+    c3.draw_rectangle(40, 70, 20, 20, anchor_x=0, anchor_y=1, filled=True, mode="add")
+
+    # Anchor at center, rotated 45 degrees
+    c3.draw_rectangle(
+        70, 40, 20, 20, anchor_x=0.5, anchor_y=0.5, rotation=45, filled=True, mode="add"
+    )
+
+    # Anchor at top left corner, rotated 45 degrees
+    c3.draw_rectangle(70, 10, 20, 20, anchor_x=0, anchor_y=0, rotation=45, filled=True, mode="add")
+
+    # Anchor at top right corner, rotated 45 degrees
+    c3.draw_rectangle(100, 10, 20, 20, anchor_x=1, anchor_y=0, rotation=45, filled=True, mode="add")
+
+    print(c3)
+
+    exit()
+    w, h = 165, 165
+    for i in range(360 * 10):
+        c2 = Canvas(w, h)
+        c2.draw_grid(15, 15, dotting=3, mode="add")
+        # for y in range(0, 200, 10):
+        #     c2.draw_line((0, y), (200, y), dotting=5, mode="add")
+        # draw border
+        # c2.draw_rectangle(0, 0, 199, 200, filled=False, mode="add")
+
+        # c2.draw_rectangle(
+        #     30,
+        #     30,
+        #     w // 8,
+        #     h // 24,
+        #     filled=False,
+        #     rotation=i,
+        #     mode="add",
+        # )
+        # c2.draw_rectangle(
+        #     135,
+        #     30,
+        #     w // 8,
+        #     h // 24,
+        #     filled=False,
+        #     rotation=i,
+        #     anchor_x=0,
+        #     anchor_y=0,
+        #     mode="add",
+        # )
+        # c2.draw_rectangle(
+        #     82,
+        #     82,
+        #     w // 8,
+        #     h // 24,
+        #     filled=False,
+        #     rotation=i,
+        #     mode="add",
+        #     corner_radius=10,
+        # )
+        print(c2)
+        # break
+    # angle = 0
+    # spinner = 0
+    # spinner_distance = 40 * 3
+    # spinner_angle_delta = math.pi / 5
+    # spinner_dots = 8
+    #
+    # for _ in range(100):
+    #     angle += 2
+    #
+    #     c_anim = Canvas(300, 300)
+    #     # c.draw_polygon((50, 50), 5, 40, 0)
+    #     # c.draw_polygon((50, 50), 9, 40, 0, filled=True)
+    #     c_anim.draw_polygon((150, 150), 5, 3 * 35, angle, filled=True, mode="add")
+    #     c_anim.draw_polygon((150, 150), 5, 3 * 30, angle, filled=True, mode="clear")
+    #     c_anim.draw_polygon((150, 150), 5, 3 * 25, angle, filled=False)
+    #
+    #     for i in range(spinner_dots):
+    #         c_anim.draw_circle(
+    #             (
+    #                 int(spinner_distance * math.cos(-spinner - i * spinner_angle_delta)) + 150,
+    #                 int(spinner_distance * math.sin(-spinner - i * spinner_angle_delta)) + 150,
+    #             ),
+    #             18 * (0.1 * spinner_dots - 0.1 * (i + math.cos(3 * math.sin(spinner / 15)))),
+    #             False,
+    #             3 * 3,
+    #         )
+    #         c_anim.draw_circle(
+    #             (
+    #                 int(8 * 3 * math.cos(spinner + i * spinner_angle_delta)) + 150,
+    #                 int(8 * 3 * math.sin(spinner + i * spinner_angle_delta)) + 150,
+    #             ),
+    #             (0.1 * spinner_dots - 0.1 * (i + math.cos(3 * math.sin(spinner / 15)))),
+    #             False,
+    #             3 * 3,
+    #         )
+    #     spinner -= math.pi / 30
+    #
+    #     # print(f"{c_anim}\033]u", end="", flush=True)
+    #     print(f"\033[30;1H{c_anim}", end="", flush=True)

@@ -54,7 +54,7 @@ class Ball:
                     self.vy, ball.vy = ball.vy, self.vy
 
     def draw(self, canvas: Canvas) -> None:
-        canvas.draw_circle((int(self.x), int(self.y)), int(self.radius), angle_step=1.5)
+        canvas.draw_circle(int(self.x), int(self.y), int(self.radius), False, angle_step=1.5)
 
 
 def show_balls() -> None:

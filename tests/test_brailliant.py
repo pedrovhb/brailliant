@@ -94,14 +94,8 @@ def test_sparkbars_non_normalized():
     assert get_sparkbar((1,), width=10, normalized=False) == "⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
     assert get_sparkbar((), width=10, normalized=False) == "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
     assert get_sparkbar((1, 4, 5), width=10, normalized=False) == "⡶⠶⠂⠀⠀⠀⠀⠀⠀⠀"
-    assert (
-        get_sparkbar((3, 4, 1), normalized=False)
-        == "⣦⡤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
-    )
-    assert (
-        get_sparkbar((342, 37, 745), width=20, normalized=False)
-        == "⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣖⣒"
-    )
+    assert get_sparkbar((3, 4, 1), normalized=False) == "⣦⡤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
+    assert get_sparkbar((342, 37, 745), width=20, normalized=False) == "⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣖⣒"
     with pytest.raises(ValueError):
         get_sparkbar((1, 4, 5, 2, 4), normalized=False)
 
@@ -112,10 +106,7 @@ def test_sparkbars_normalized():
     assert get_sparkbar((), width=10, normalized=True) == "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀"
     assert get_sparkbar((1, 4, 5), width=10, normalized=True) == "⣶⣶⡶⠶⠶⠶⠶⠶⠶⠶"
     # assert get_sparkbar((3, 4, 1), normalized=True) == "⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣦⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤"
-    assert (
-        get_sparkbar((342, 37, 745), width=20, normalized=True)
-        == "⣶⣖⣒⣒⣒⣒⣒⣒⣒⣒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒"
-    )
+    assert get_sparkbar((342, 37, 745), width=20, normalized=True) == "⣶⣖⣒⣒⣒⣒⣒⣒⣒⣒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒"
     with pytest.raises(ValueError):
         get_sparkbar((1, 4, 5, 2, 4), normalized=True)
 
@@ -124,8 +115,8 @@ def test_canvas():
     canvas = Canvas(40, 40)
     canvas_2 = Canvas(40, 40)
 
-    canvas.draw_circle((15, 15), 10)
-    canvas_2.draw_circle((25, 25), 10)
+    canvas.draw_circle(15, 15, 10, False)
+    canvas_2.draw_circle(25, 25, 10, False)
 
     assert (
         canvas.get_str()

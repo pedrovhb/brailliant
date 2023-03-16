@@ -78,6 +78,7 @@ class Ball(PhysObj):
         return canvas.draw_circle(
             (int(self.body.position.x), int(self.body.position.y)),
             int(self.shape.radius),
+            False,
             angle_step=1.5,
         )
 
