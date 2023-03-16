@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import atexit
 import math
 import mimetypes
 import shutil
@@ -20,8 +19,6 @@ from brailliant.cli_utils import (
     extract_frames_from_video,
     image_to_braille,
     InvalidVideoError,
-    scroll_down,
-    scroll_up,
     setup_terminal,
 )
 
@@ -100,6 +97,16 @@ def display_braille_media() -> None:
         action=argparse.BooleanOptionalAction,
         default=None,
         help="Whether to use color. By default, color is used if the terminal is interactive.",
+    )
+    parser.add_argument(
+        "-nc",
+        "-bw",
+        "--no-colour",
+        "--black-and-white",
+        "--bw",
+        action="store_false",
+        dest="color",
+        help="Display in black and white (equivalent to --no-color)",
     )
     parser.add_argument(
         "-i",
@@ -245,7 +252,6 @@ async def _show_frames(
     fps: float,
     frame_queue: asyncio.Queue,
     playing_event: asyncio.Event,
-    video_duration: float | None = None,
 ) -> None:
     """Show frames from the frame queue to the terminal at the specified framerate."""
     frame_delta = 1 / fps
@@ -302,7 +308,7 @@ async def process_frames(
             process=proc,
             width=width,
             height=height,
-            pil_images=True,
+            return_pil_images=True,
         ):
             fn = partial(
                 image_to_braille,
@@ -444,7 +450,7 @@ def display_sparkline():
         help="Minimum value of the sparkline",
     )
     parser.add_argument(
-        "-c",
+        "-canvas_5",
         "--color",
         action=argparse.BooleanOptionalAction,
         default=False,

@@ -4,6 +4,7 @@ import math
 import re
 import sys
 from asyncio.subprocess import Process
+from os import get_terminal_size
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -33,6 +34,11 @@ def scroll_down(lines: int) -> None:
 
 
 def setup_terminal(lines_buffer: int) -> None:
+
+    terminal_width, terminal_height = get_terminal_size()
+    if lines_buffer > terminal_height:
+        # No need to scroll if the buffer is larger than the terminal anyway
+        return
 
     # Scroll down enough that the video will be displayed entirely
     scroll_down(lines_buffer)
@@ -136,7 +142,7 @@ async def extract_frames_from_video(
     process: Process,
     width: int,
     height: int,
-    pil_images: bool = True,
+    return_pil_images: bool = True,
 ) -> AsyncIterator[Image] | AsyncIterator[bytes]:
     """Extract frames from a video file.
 
@@ -148,7 +154,7 @@ async def extract_frames_from_video(
         process: The ffmpeg subprocess.
         width: The desired width of the video after rescaling. Defaults to None.
         height: The desired height of the video after rescaling. Defaults to None.
-        pil_images: Whether to return PIL Images or raw bytes. Defaults to True.
+        return_pil_images: Whether to return PIL Images or raw bytes. Defaults to True.
 
     Returns:
         An async iterator of PIL images, or raw bytes if pil_images is False.
@@ -163,7 +169,7 @@ async def extract_frames_from_video(
         if len(buf) >= bytes_per_frame:
             bs = bytes(buf[:bytes_per_frame])
             buf = buf[bytes_per_frame:]
-            if pil_images:
+            if return_pil_images:
                 yield PIL.Image.frombytes("RGB", (width, height), bs)
             else:
                 yield bs
@@ -178,7 +184,18 @@ def image_to_braille(
     color: bool = False,
     invert: bool = False,
 ) -> str:
-    """Helper function for the CLI tool to display an image in either color or monochrome."""
+    """Helper function for the CLI tool to display an image in either color or monochrome.
+
+    Args:
+        image: The PIL image to convert to braille.
+        resize: The desired width and height of the image after rescaling. Defaults to None.
+        keep_ratio: Whether to keep the aspect ratio when rescaling. Defaults to True.
+        color: Whether to display the image in color. Defaults to False.
+        invert: Whether to invert the image. Defaults to False.
+
+    Returns:
+        A string containing the braille representation of the image.
+    """
     image = image.convert("RGB")
     if resize is not None:
         if keep_ratio:
@@ -240,7 +257,7 @@ def _canvas_image_color_with_bg(image: Image, invert: bool = False) -> str:
         # Reset style and add a newline
         chars.append("\033[0m\n")
 
-    return "".join(chars)
+    return "".join(chars).rstrip()
 
 
 def _canvas_image_color_no_bg(image: Image) -> str:
@@ -270,7 +287,7 @@ def _canvas_image_color_no_bg(image: Image) -> str:
         # Reset style and add a newline
         chars.append("\033[0m\n")
 
-    return "".join(chars)
+    return "".join(chars).rstrip()
 
 
 def _canvas_image_color_bg(image: Image, invert) -> str:
@@ -306,4 +323,4 @@ def _canvas_image_color_bg(image: Image, invert) -> str:
         # Reset style and add a newline
         chars.append("\033[0m\n")
 
-    return "".join(chars)
+    return "".join(chars).rstrip()

@@ -6,12 +6,11 @@ import sys
 async def get_sensor_output():
     # Create the subprocess process
     process = await asyncio.create_subprocess_shell(
-        "termux-sensor -s gravit -d 50 | jq --unbuffered -c",
-        # "termux-sensor -s linear_ac -d 50 | jq --unbuffered -c",
+        "termux-sensor -s gravit -d 50 | jq --unbuffered -canvas_5",
+        # "termux-sensor -s linear_ac -d 50 | jq --unbuffered -canvas_5",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-
     # Initialize a dictionary to store the values for each index
     values = {0: None, 1: None, 2: None}
 
@@ -23,7 +22,7 @@ async def get_sensor_output():
                 yield data["gravity  Non-wakeup"]["values"]
                 # yield data["linear_acceleration"]["values"]
     finally:
-        await asyncio.create_subprocess_shell("termux-sensor -c")
+        await asyncio.create_subprocess_shell("termux-sensor -canvas_5")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@ import operator
 from functools import reduce
 from typing import Final
 
+from bitarray import bitarray
+
 BRAILLE_COLS: Final[int] = 2
 BRAILLE_ROWS: Final[int] = 4
 
@@ -122,9 +124,7 @@ coords_braille_mapping = {
 # (1, 2) 21     ⢰
 # (1, 3) 85     ⢸
 coords_braille_mapping_filled = {
-    (x, y): reduce(
-        operator.or_, [coords_braille_mapping[(x, yy)] for yy in range(y + 1)], 0
-    )
+    (x, y): reduce(operator.or_, [coords_braille_mapping[(x, yy)] for yy in range(y + 1)], 0)
     for x in range(2)
     for y in range(4)
 }
@@ -158,3 +158,27 @@ def coords_to_braille(*coords: tuple[int, int], filled: bool = False) -> str:
     for coord in coords:
         braille_char |= mapping[coord]
     return braille_table_str[braille_char]
+
+
+# Mapping of characters to the more efficient bitarray representation
+braille_table_bitarray = {
+    c.encode(): bitarray(format(i, "08b"))
+    for i, c in enumerate(
+        "⠀⢀⡀⣀⠠⢠⡠⣠⠄⢄⡄⣄⠤⢤⡤⣤"
+        "⠐⢐⡐⣐⠰⢰⡰⣰⠔⢔⡔⣔⠴⢴⡴⣴"
+        "⠂⢂⡂⣂⠢⢢⡢⣢⠆⢆⡆⣆⠦⢦⡦⣦"
+        "⠒⢒⡒⣒⠲⢲⡲⣲⠖⢖⡖⣖⠶⢶⡶⣶"
+        "⠈⢈⡈⣈⠨⢨⡨⣨⠌⢌⡌⣌⠬⢬⡬⣬"
+        "⠘⢘⡘⣘⠸⢸⡸⣸⠜⢜⡜⣜⠼⢼⡼⣼"
+        "⠊⢊⡊⣊⠪⢪⡪⣪⠎⢎⡎⣎⠮⢮⡮⣮"
+        "⠚⢚⡚⣚⠺⢺⡺⣺⠞⢞⡞⣞⠾⢾⡾⣾"
+        "⠁⢁⡁⣁⠡⢡⡡⣡⠅⢅⡅⣅⠥⢥⡥⣥"
+        "⠑⢑⡑⣑⠱⢱⡱⣱⠕⢕⡕⣕⠵⢵⡵⣵"
+        "⠃⢃⡃⣃⠣⢣⡣⣣⠇⢇⡇⣇⠧⢧⡧⣧"
+        "⠓⢓⡓⣓⠳⢳⡳⣳⠗⢗⡗⣗⠷⢷⡷⣷"
+        "⠉⢉⡉⣉⠩⢩⡩⣩⠍⢍⡍⣍⠭⢭⡭⣭"
+        "⠙⢙⡙⣙⠹⢹⡹⣹⠝⢝⡝⣝⠽⢽⡽⣽"
+        "⠋⢋⡋⣋⠫⢫⡫⣫⠏⢏⡏⣏⠯⢯⡯⣯"
+        "⠛⢛⡛⣛⠻⢻⡻⣻⠟⢟⡟⣟⠿⢿⡿⣿"
+    )
+}
