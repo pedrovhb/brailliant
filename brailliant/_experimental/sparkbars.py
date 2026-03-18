@@ -1,8 +1,21 @@
-import itertools
+from __future__ import annotations
+
 import math
 from typing import Iterable
 
 from brailliant import braille_table_str, coords_braille_mapping
+
+
+def _coerce_data(data: Iterable[float]) -> tuple[float, ...]:
+    if not isinstance(data, (list, tuple)):
+        data = tuple(data)
+    else:
+        data = tuple(data)
+
+    if len(data) > 4:
+        raise ValueError("Data must have at most 4 elements.")
+
+    return data
 
 
 def get_sparkbar(
@@ -14,84 +27,70 @@ def get_sparkbar(
 ) -> str:
     """Return a sparkline-like string with up to 4 horizontal bars.
 
+    Each input value is treated as a horizontal length measured in braille-dot columns.
+    Up to four values can be displayed, one per braille row from top to bottom.
+
     Args:
-        data: The data to be represented as a sparkline.
-        min_width: The width of the sparkline.
-        max_width: The maximum width of the sparkline.
-        min_val: The bottom of the sparkline, or `None` to use the minimum value in the data.
-        max_val: The top of the sparkline, or `None` to use the maximum value in the data.
+        data: The row lengths to represent.
+        min_width: Minimum output width in braille characters.
+        max_width: Maximum output width in braille characters.
+        min_val: Minimum input value to consider. Values below this are clipped.
+        max_val: Maximum input value to consider. Values above this are clipped.
 
     Returns:
-        The sparkline as a string.
+        The sparkbar as a string.
 
     Examples:
-
-        >>> get_sparkbar(3, 4, 1)
+        >>> get_sparkbar([3, 4, 1])
         '⣦⡤'
 
-        >>> get_sparkbar(3, 4, 1, min_width=10)
-        '⣦⡤⠀⠀⠀⠀⠀⠀⠀⠀'
+        >>> get_sparkbar([3, 4, 1], min_width=10)
+        '⣦⡤⠀⠀⠀⠀⠀⠀'
 
-        >>> get_sparkbar(3, 4, 1, min_width=10, max_width=20)
-        '⣦⡤⠀⠀⠀⠀⠀⠀⠀⠀'
+        >>> get_sparkbar([3, 4, 1], min_width=10, max_width=20)
+        '⣦⡤⠀⠀⠀⠀⠀⠀'
     """
+    data = _coerce_data(data)
 
-    if len(data) > 4:
-        raise ValueError("Data must have at most 4 elements.")
+    if min_width is not None and min_width < 0:
+        raise ValueError("min_width must be at least 0")
+    if max_width is not None and max_width < 0:
+        raise ValueError("max_width must be at least 0")
+    if min_width is not None and max_width is not None and min_width > max_width:
+        raise ValueError("min_width cannot be greater than max_width")
 
     if not data:
         return "⠀" * min_width if min_width is not None else ""
 
-    if min_val is None and data:
-        _min_val = min(data)
-    else:
-        _min_val = min_val or 0
+    _min_val = min(data) if min_val is None else min_val
+    _max_val = max(max(data), _min_val) if max_val is None else max_val
+    if max_val is not None and _max_val < _min_val:
+        raise ValueError("max_val must be greater than or equal to min_val")
 
-    if max_val is None and data:
-        _max_val = max(data)
-    else:
-        _max_val = max_val or 0
+    row_lengths = tuple(max(0, math.ceil(min(value, _max_val) - _min_val)) for value in data)
+    num_chars = math.ceil(max(row_lengths, default=0) / 2)
 
-    scale = _max_val - _min_val
-    if scale == 0:
-        scale = 1
+    if max_width is not None:
+        num_chars = min(num_chars, max_width)
+    if min_width is not None:
+        num_chars = max(num_chars, min_width)
 
-    # Get the length in dots for each horizontal bar. Since there's 4 vertical
-    # dots per character, we'll have 4 rows.
-    rows_lengths = [0, 0, 0, 0]
-    for i, value in enumerate(data):
-        val = math.ceil(value - _min_val)
-        if min_width is not None:
-            val = max(0, min(min_width, val))
-        rows_lengths[i] = val * 2
-
-    # Use the mapping to convert the columns of braille dots into braille characters.
-
-    # unbound_num_chars is the number of characters we'd use if there were no
-    # min_width or max_width restrictions, i.e. the number of dots divided by 2
-    # (since there are 2 horizontal dots per character).
-    unbound_num_chars = math.ceil(scale / 2)
-    if min_width is None and max_width is None:
-        num_chars = unbound_num_chars
-    else:
-        # Clamp unbound_num_chars to the min_width and max_width.
-        num_chars = unbound_num_chars
-        if max_width is not None:
-            num_chars = min(num_chars, max_width)
-        if min_width is not None:
-            num_chars = max(num_chars, min_width)
+    max_dots = num_chars * 2
+    row_lengths = tuple(min(length, max_dots) for length in row_lengths)
 
     chars = []
-    for i in range(num_chars):
+    for char_index in range(num_chars):
         char = 0
-        for j, length in enumerate(rows_lengths):
-            if length > i:
-                char |= coords_braille_mapping[0, j]
-            if length > i + 1:
-                char |= coords_braille_mapping[1, j]
-        chars.append(char)
+        left_dot = char_index * 2
+        right_dot = left_dot + 1
+        for row_index, row_length in enumerate(row_lengths):
+            if row_length > left_dot:
+                char |= coords_braille_mapping[(0, row_index)]
+            if row_length > right_dot:
+                char |= coords_braille_mapping[(1, row_index)]
+        chars.append(braille_table_str[char])
 
-    return "".join(braille_table_str[c] for c in chars)  # todo - fix this function
+    return "".join(chars)
 
 
 def get_sparkbar_normalized(
@@ -102,53 +101,40 @@ def get_sparkbar_normalized(
 ) -> str:
     """Return a normalized sparkbar.
 
-    If max_width is specified and its value is exceeded by the values, values will be normalized
-    to fit within that many characters.
-
-    If min_width is specified and the data contains only values which don't reach that, the
-    values will be normalized to stretch the data, so it fills the width.
-
-    If max_width is not specified, the sparkbar will be as wide as the data requires (i.e. a
-    data set with a max value of 10 and a min value of 0 will be 5 characters wide, as one
-    character can fit 2 dots horizontally).
+    Input values are scaled to fit exactly within the requested character width.
 
     Args:
-        min_width: The minimum width of the sparkbar.
-        max_width: The maximum width of the sparkbar.
+        data: The values to render.
+        width: Output width in braille characters.
+        min_data_value: Explicit lower bound for normalization.
+        max_data_value: Explicit upper bound for normalization.
 
     Returns:
-        A sparkbar string.
-
-
+        A normalized sparkbar string.
     """
-    min_val = min(data)
-    max_val = max(data)
+    if width < 0:
+        raise ValueError("width must be at least 0")
+    if min_data_value is not None and max_data_value is not None and max_data_value < min_data_value:
+        raise ValueError("max_data_value must be greater than or equal to min_data_value")
 
-    if min_data_value is not None:
-        min_val = min(min_val, min_data_value)
-    if max_data_value is not None:
-        max_val = max(max_val, max_data_value)
+    data = _coerce_data(data)
+    if not data:
+        return "⠀" * width
 
-    data = tuple(data)
-    if min_val < 0:
-        data = tuple(value - min_val for value in data)
-        min_val = 0
-    val_range = max_val - min_val or 1
-    val_scale = 2 * width / val_range
-    char_normalized_data = tuple(val * val_scale for val in data)
+    min_val = min_data_value if min_data_value is not None else min(data)
+    max_val = max_data_value if max_data_value is not None else max(data)
 
-    return get_sparkbar(char_normalized_data)
+    dot_width = width * 2
+    val_range = max_val - min_val
+    if val_range == 0:
+        scaled_data = [0] * len(data)
+    else:
+        scaled_data = [
+            max(0, math.ceil((min(value, max_val) - min_val) / val_range * dot_width))
+            for value in data
+        ]
+
+    return get_sparkbar(scaled_data, min_width=width, max_width=width, min_val=0, max_val=dot_width)
 
 
-if __name__ == "__main__":
-    bar_data_large_range: list[float] = [-10, 40, 60, 0]
-    bar_data_medium_range: list[float] = [1, 1, 5, 6]
-    bar_data_small_range: list[float] = [0, 0, 0, 1]
-
-    for fn, data in itertools.product(
-        (get_sparkbar, get_sparkbar_normalized),
-        (bar_data_small_range, bar_data_medium_range, bar_data_large_range),
-    ):
-        print(f"{fn.__name__} - {data}\n")
-        print(fn(data))
-        print("\n")
+__all__ = ("get_sparkbar", "get_sparkbar_normalized")

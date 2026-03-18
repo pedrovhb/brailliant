@@ -6,8 +6,8 @@ import sys
 async def get_sensor_output():
     # Create the subprocess process
     process = await asyncio.create_subprocess_shell(
-        "termux-sensor -s gravit -d 50 | jq --unbuffered -canvas_5",
-        # "termux-sensor -s linear_ac -d 50 | jq --unbuffered -canvas_5",
+        "termux-sensor -s gravit -d 50 | jq --unbuffered -c '.'",
+        # "termux-sensor -s linear_ac -d 50 | jq --unbuffered -c '.'",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -16,20 +16,22 @@ async def get_sensor_output():
 
     # Read the output of the process and store the values
     try:
+        assert process.stdout is not None
         async for line in process.stdout:
             data = json.loads(line)
             if data:
                 yield data["gravity  Non-wakeup"]["values"]
                 # yield data["linear_acceleration"]["values"]
     finally:
-        await asyncio.create_subprocess_shell("termux-sensor -canvas_5")
+        await asyncio.create_subprocess_shell("termux-sensor -c")
 
 
 if __name__ == "__main__":
 
     async def main():
         # Run the sensor cleanup command before starting the loop
-        from brailliant.sparklines import get_sparkbar_normalized, sparkline
+        from brailliant._experimental.sparkbars import get_sparkbar_normalized
+        from brailliant.sparklines import sparkline
 
         line_data = [], [], []
         async for data in get_sensor_output():  # as sensor_data:
