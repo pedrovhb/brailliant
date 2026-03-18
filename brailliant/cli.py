@@ -48,19 +48,19 @@ def display_braille_media() -> None:
               Examples:
               
                 Convert an image to braille and display it in the terminal:
-                $ python braille.py input.png
+                $ brailliant input.png
                 
                 # Convert an image to braille and save it to a file:
-                $ python braille.py input.png > output.txt
+                $ brailliant input.png > output.txt
                 
                 # Convert an image to a specific size and display it in the terminal:
-                $ python braille.py input.png -s 100 100
+                $ brailliant input.png -s 100 100
                 
                 # Convert an image to braille and save it to a file, displaying verbose output:
-                $ python braille.py input.png -v > output.txt
+                $ brailliant input.png -v > output.txt
                 
                 # Display a video in the terminal at 15 frames per second:
-                $ python braille.py input.mp4 -f 15
+                $ brailliant input.mp4 -f 15
             """.strip()
         ),
         add_help=True,
@@ -452,11 +452,11 @@ def display_sparkline():
         help="Minimum value of the sparkline",
     )
     parser.add_argument(
-        "-canvas_5",
+        "-c",
         "--color",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Color the sparkline",
+        help="Color the sparkline when writing to a terminal",
     )
     parser.add_argument(
         "-f",
@@ -482,6 +482,7 @@ def display_sparkline():
 
     args = parser.parse_args()
     title = args.title if args.title is not None else ""
+    use_color = args.color and sys.stdout.isatty()
 
     stdin = sys.stdin.buffer
     values = []
@@ -494,6 +495,8 @@ def display_sparkline():
         else:
             values = value
         sl = sparkline(values, args.width, args.filled, args.min, args.max, args.log_scale)
+        if use_color:
+            sl = f"\033[36m{sl}\033[0m"
         sys.stdout.write(f"\r{title} {sl} ")
         sys.stdout.flush()
     sys.stdout.write("\n")

@@ -652,6 +652,7 @@ class Canvas:
                 self.width - margin,
                 margin,
                 dotting=dotting,
+                mode=mode,
             )
             self.draw_line(
                 self.width - margin,
@@ -659,6 +660,7 @@ class Canvas:
                 self.width - margin,
                 self.height - margin,
                 dotting=dotting,
+                mode=mode,
             )
             self.draw_line(
                 self.width - margin,
@@ -666,6 +668,7 @@ class Canvas:
                 margin,
                 self.height - margin,
                 dotting=dotting,
+                mode=mode,
             )
             self.draw_line(
                 margin,
@@ -673,6 +676,7 @@ class Canvas:
                 margin,
                 margin,
                 dotting=dotting,
+                mode=mode,
             )
 
         return self

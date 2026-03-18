@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from PIL import Image
 
-from brailliant.canvas import Canvas, _draw_rectangle
+from brailliant.canvas import Canvas, DrawMode, _draw_rectangle
 from brailliant.cli import display_sparkline
 from brailliant.cli_utils import setup_terminal
 from brailliant.sparklines import sparkline, sparkline_non_normalized
@@ -89,3 +89,47 @@ def test_display_sparkline_forwards_log_scale(monkeypatch) -> None:
     display_sparkline()
 
     assert seen == {"values": [1, 2, 3], "log_scale": True}
+
+
+def test_draw_border_clear_mode_clears_border() -> None:
+    canvas = Canvas(12, 12)
+    canvas.fill()
+
+    canvas.draw_border(margin=2, mode=DrawMode.CLEAR)
+
+    assert canvas != Canvas(12, 12).fill()
+    border_index = (canvas.height - 2 - 1) * canvas.width + 2
+    interior_index = (canvas.height - 5 - 1) * canvas.width + 5
+    assert canvas._canvas[border_index] == 0
+    assert canvas._canvas[interior_index] == 1
+
+
+def test_display_sparkline_colorizes_terminal_output(monkeypatch) -> None:
+    fake_args = SimpleNamespace(
+        width=80,
+        max=None,
+        min=None,
+        color=True,
+        filled=True,
+        log_scale=False,
+        title=None,
+    )
+    writes = []
+
+    class FakeStdout:
+        def isatty(self) -> bool:
+            return True
+
+        def write(self, text: str) -> None:
+            writes.append(text)
+
+        def flush(self) -> None:
+            pass
+
+    monkeypatch.setattr("argparse.ArgumentParser.parse_args", lambda self: fake_args)
+    monkeypatch.setattr("brailliant.cli.sys.stdin", SimpleNamespace(buffer=[b"1 2 3\n"]))
+    monkeypatch.setattr("brailliant.cli.sys.stdout", FakeStdout())
+
+    display_sparkline()
+
+    assert any("\033[36m" in text for text in writes)
