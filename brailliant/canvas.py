@@ -8,27 +8,20 @@ from fractions import Fraction
 from functools import partialmethod
 from pathlib import Path
 from typing import (
+    cast,
     Callable,
     Iterable,
     Iterator,
     Literal,
     Tuple,
-    TYPE_CHECKING,
     Dict,
     NamedTuple,
 )
 
 from bitarray import bitarray
+from PIL.Image import Image
 
 from brailliant import BRAILLE_COLS, BRAILLE_ROWS, braille_table_bitarray
-
-if TYPE_CHECKING:
-    try:
-        from PIL.Image import Image, ImageDraw, ImageFont
-    except ImportError:
-        Image = "Image"
-        ImageDraw = "ImageDraw"
-        ImageFont = "ImageFont"
 
 
 class DrawMode(str, Enum):
@@ -225,26 +218,32 @@ def _draw_rectangle(
     cos = math.cos(angle)
     sin = math.sin(angle)
 
-    # Anchor point is the point around which the rectangle is rotated. Here we convert it to
-    # an absolute position rather than a relative position to the width and height.
-    anchor_x = width * anchor_x
-    anchor_y = height * anchor_y
+    rotation_origin_x = x + width * anchor_x
+    rotation_origin_y = y + height * anchor_y
 
     # Calculate the corners of the rectangle
     corners = [
-        (x - anchor_x, y - anchor_y),
-        (x + width - anchor_x, y - anchor_y),
-        (x + width - anchor_x, y + height - anchor_y),
-        (x - anchor_x, y + height - anchor_y),
+        (x, y),
+        (x + width, y),
+        (x + width, y + height),
+        (x, y + height),
     ]
 
     # Rotate the corners
     corners = [
         (
-            round(x * cos - y * sin + width / 2),
-            round(x * sin + y * cos + height / 2),
+            round(
+                rotation_origin_x
+                + (corner_x - rotation_origin_x) * cos
+                - (corner_y - rotation_origin_y) * sin
+            ),
+            round(
+                rotation_origin_y
+                + (corner_x - rotation_origin_x) * sin
+                + (corner_y - rotation_origin_y) * cos
+            ),
         )
-        for x, y in corners
+        for corner_x, corner_y in corners
     ]
 
     yield from _draw_polygon(corners, filled=filled)
@@ -263,24 +262,25 @@ def _draw_arrow(
         end = end_or_angle
         angle = math.degrees(math.atan2(end[1] - start[1], end[0] - start[0]))
 
-    yield from _draw_line(start, end)
+    start_x, start_y = start
+    end_x, end_y = end
+
+    yield from _draw_line(start_x, start_y, end_x, end_y)
     yield from _draw_line(
-        end,
-        (
-            end[0] + int(size * 0.4 * math.cos(math.radians(angle + 140))),
-            end[1] + int(size * 0.4 * math.sin(math.radians(angle + 140))),
-        ),
+        end_x,
+        end_y,
+        end_x + int(size * 0.4 * math.cos(math.radians(angle + 140))),
+        end_y + int(size * 0.4 * math.sin(math.radians(angle + 140))),
     )
     yield from _draw_line(
-        end,
-        (
-            end[0] + int(size * 0.4 * math.cos(math.radians(angle - 140))),
-            end[1] + int(size * 0.4 * math.sin(math.radians(angle - 140))),
-        ),
+        end_x,
+        end_y,
+        end_x + int(size * 0.4 * math.cos(math.radians(angle - 140))),
+        end_y + int(size * 0.4 * math.sin(math.radians(angle - 140))),
     )
 
 
-def _font_text_to_image(text: str, width: int, font_path: Path | str | None = None) -> Image:
+def _font_text_to_image(text: str, width: int, font_path: Path | str) -> Image:
     try:
         from PIL import Image, ImageDraw, ImageFont
     except ImportError as e:
@@ -292,7 +292,7 @@ def _font_text_to_image(text: str, width: int, font_path: Path | str | None = No
 
     # todo - allow text rotation
 
-    font_path = str(font_path) if font_path else None
+    font_path = str(font_path)
 
     # create an ImageDraw object to measure the text size
     measure_draw = ImageDraw.Draw(Image.new("RGB", (0, 0)))
@@ -609,7 +609,7 @@ class Canvas:
         mode: DrawMode = DrawMode.ADD,
     ) -> Canvas:
         # Opposite mode for margins
-        margin_mode = "clear" if mode == "add" else "add"
+        margin_mode = DrawMode.CLEAR if mode == DrawMode.ADD else DrawMode.ADD
 
         self.draw_rectangle(
             x=0,
@@ -716,7 +716,7 @@ class Canvas:
 
     def draw_image(
         self,
-        image: str | Path | "Image",
+        image: str | Path | Image,
         x: int = 0,
         y: int = 0,
         resize: Literal["cover"]
@@ -748,6 +748,7 @@ class Canvas:
             The canvas with the image drawn on it.
         """
         try:
+            from PIL import ImageOps
             from PIL.Image import Dither, open as open_image, Resampling
             import PIL.Image
         except ImportError as e:
@@ -760,16 +761,21 @@ class Canvas:
         if isinstance(image, (str, Path)):
             image = open_image(image)
 
+        image = cast(Image, image)
+
         if resize is not None:
             resample = Resampling.LANCZOS
             if resize == "cover":
-                image = image.resize((self.width, self.height), resample=resample)
+                image = ImageOps.fit(image, (self.width, self.height), method=resample)
             else:
                 w, h = resize
                 if w is None:
+                    assert h is not None
                     w = int(image.width * h / image.height)
                 elif h is None:
+                    assert w is not None
                     h = int(image.height * w / image.width)
+                assert h is not None
                 image = image.resize((w, h), resample=resample)
 
         final_img = PIL.Image.new(
@@ -779,8 +785,6 @@ class Canvas:
         )
         final_img.paste(image, (x, y))
         final_img = final_img.convert("1", dither=Dither.FLOYDSTEINBERG if dither else Dither.NONE)
-
-        final_img.save("final_img.png")
 
         im_bitarray = bitarray((1 if px else 0 for px in final_img.getdata(0)))
         if mode == "clear":
@@ -838,7 +842,7 @@ class Canvas:
         return self.get_str()
 
     def __repr__(self) -> str:
-        return f"Canvas({self.width}, {self.height}, {hex(self._canvas)})"
+        return f"Canvas({self.width}, {self.height}, {self._canvas.to01()!r})"
 
     def __eq__(self, other):
         if isinstance(other, Canvas) and self._canvas == other._canvas:

@@ -6,11 +6,10 @@ import sys
 from asyncio.subprocess import Process
 from os import get_terminal_size
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, cast
 
-import PIL
 from PIL import ImageFilter
-from PIL.Image import Dither, Image
+from PIL.Image import Dither, Image, frombytes as image_frombytes
 
 from brailliant import BRAILLE_COLS, BRAILLE_ROWS, Canvas
 
@@ -34,8 +33,10 @@ def scroll_down(lines: int) -> None:
 
 
 def setup_terminal(lines_buffer: int) -> None:
+    if not sys.stdout.isatty():
+        return
 
-    terminal_width, terminal_height = get_terminal_size()
+    _, terminal_height = get_terminal_size()
     if lines_buffer > terminal_height:
         # No need to scroll if the buffer is larger than the terminal anyway
         return
@@ -52,6 +53,7 @@ def setup_terminal(lines_buffer: int) -> None:
         # Restore the cursor position, show it, and scroll down on exit so
         # that transient output doesn't interfere with future usage of the terminal
         sys.stdout.write("\033[u\033[?25h" + "\n" * lines_buffer)
+        sys.stdout.flush()
 
     atexit.register(teardown)
 
@@ -125,6 +127,7 @@ async def create_ffmpeg_process(
         r"Stream .*Video:.* (?P<width>\d+)x(?P<height>\d+)\D.* (?P<fps>\d+(?:\.\d+)?) fps"
     )
     is_output = False
+    assert process.stderr is not None
     async for line in process.stderr:
         if line.startswith(b"Output"):
             is_output = True
@@ -143,7 +146,7 @@ async def extract_frames_from_video(
     width: int,
     height: int,
     return_pil_images: bool = True,
-) -> AsyncIterator[Image] | AsyncIterator[bytes]:
+) -> AsyncIterator[Image | bytes]:
     """Extract frames from a video file.
 
     Extracts frames from a video by wrapping ffmpeg in an asyncio subprocess. The
@@ -161,6 +164,7 @@ async def extract_frames_from_video(
     """
     bytes_per_frame = 3 * width * height
     buf = bytearray()
+    assert process.stdout is not None
     while True:
         chunk = await process.stdout.read(bytes_per_frame)
         if not chunk:
@@ -170,7 +174,7 @@ async def extract_frames_from_video(
             bs = bytes(buf[:bytes_per_frame])
             buf = buf[bytes_per_frame:]
             if return_pil_images:
-                yield PIL.Image.frombytes("RGB", (width, height), bs)
+                yield image_frombytes("RGB", (width, height), bs)
             else:
                 yield bs
 
@@ -244,12 +248,14 @@ def _canvas_image_color_with_bg(image: Image, invert: bool = False) -> str:
             if x >= image_bg.width or y >= image_bg.height:
                 bg_r, bg_g, bg_b = (0, 0, 0)
             else:
-                bg_r, bg_g, bg_b = image_bg.getpixel((x, y))
+                bg_r, bg_g, bg_b = cast(tuple[int, int, int], image_bg.getpixel((x, y)))
 
             if x >= image.width * BRAILLE_ROWS or y >= image_bg.height * BRAILLE_COLS:
                 fg_r, fg_g, fg_b = (0, 0, 0)
             else:
-                fg_r, fg_g, fg_b = image.getpixel((x * BRAILLE_COLS, y * BRAILLE_ROWS))
+                fg_r, fg_g, fg_b = cast(
+                    tuple[int, int, int], image.getpixel((x * BRAILLE_COLS, y * BRAILLE_ROWS))
+                )
 
             code_bg = f"48;2;{bg_r};{bg_g};{bg_b}"
             code_fg = f"38;2;{fg_r};{fg_g};{fg_b}"

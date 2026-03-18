@@ -9,6 +9,7 @@ import textwrap
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from pathlib import Path
+from typing import cast
 
 from asynkets import PeriodicPulse, async_getch
 
@@ -199,7 +200,7 @@ def display_braille_media() -> None:
             sys.exit(1)
     elif media_type == "font":
         display_font_text(
-            text=args.input,
+            text=str(args.input),
             font_path=args.font,
             width=size[0],
             invert=args.invert,
@@ -310,6 +311,7 @@ async def process_frames(
             height=height,
             return_pil_images=True,
         ):
+            frame = cast(Image, frame)
             fn = partial(
                 image_to_braille,
                 invert=invert,
@@ -491,7 +493,7 @@ def display_sparkline():
             values.append(value[0])
         else:
             values = value
-        sl = sparkline(values, args.width, args.filled, args.min, args.max)
+        sl = sparkline(values, args.width, args.filled, args.min, args.max, args.log_scale)
         sys.stdout.write(f"\r{title} {sl} ")
         sys.stdout.flush()
     sys.stdout.write("\n")

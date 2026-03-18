@@ -39,11 +39,13 @@ def sparkline_non_normalized(
         '⣠⣾⢠⣾⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀'
     """
 
+    if not isinstance(data, (list, tuple)):
+        data = tuple(data)
+
     if not data:
         return "⠀" * width if width is not None else ""
 
-    if not isinstance(data, (list, tuple)):
-        data = tuple(min(d, 4) for d in data)
+    data = tuple(min(d, 4) for d in data)
 
     if width is not None:
         if width < 1:
@@ -58,8 +60,8 @@ def sparkline_non_normalized(
     # Here, we'll use the mapping to convert the columns of braille dots into
     # braille characters. We zip them with a 1-element offset so that we can
     # get the one character that represents the two columns.
-    evens = [mapping.setdefault((0, left - 1), 0) for left in data[::2]]
-    odds = [mapping.setdefault((1, right - 1), 0) for right in data[1::2]]
+    evens = [mapping.get((0, left - 1), 0) for left in data[::2]]
+    odds = [mapping.get((1, right - 1), 0) for right in data[1::2]]
     chars = [
         braille_table_str[left | right]
         for left, right in itertools.zip_longest(evens, odds, fillvalue=0)
@@ -130,11 +132,11 @@ def sparkline(
             is useful because usually the distinction between 0 non-0 is an important one.
 
     """
-    if not data:
-        return "⠀" * width if width is not None else ""
-
     if not isinstance(data, (list, tuple)):
         data = tuple(data)
+
+    if not data:
+        return "⠀" * width if width is not None else ""
 
     _min_val = min(data) if min_val is None else min_val
     _max_val = max(data) if max_val is None else max_val
@@ -150,7 +152,7 @@ def sparkline(
 
     data_range = _max_val - _min_val
     if data_range == 0:
-        return "⠀" * min(width, len(data)) if width is not None else "⠀" * len(data)
+        return sparkline_non_normalized([base_level] * len(data), width=width, filled=filled)
 
     data = ((d - _min_val) / data_range for d in data)  # Normalize to [0, 1]
 
